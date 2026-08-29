@@ -59,7 +59,7 @@ export const fontWeight = {
  *
  * A Etapa 1 era neutra em cinza — correto para uma lista, genérico para um
  * produto de time blocking. O bloco de agenda é o objeto protagonista do
- * Dayflow: ele precisa de uma cor própria, que se distinga do texto e do
+ * Merid: ele precisa de uma cor própria, que se distinga do texto e do
  * fundo sem gritar. Os tons `brand*` existem para isso; os neutros continuam
  * exatamente como estavam.
  */

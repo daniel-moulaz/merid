@@ -29,7 +29,7 @@ import { Screen } from "@/ui/screen";
 import { Text } from "@/ui/text";
 
 /**
- * HOJE — a tela principal do Dayflow.
+ * HOJE — a tela principal do Merid.
  *
  * Ela existe para responder duas perguntas de uma vez:
  *

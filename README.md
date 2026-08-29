@@ -1,4 +1,6 @@
-# Dayflow
+# Merid
+
+> Dê direção ao seu tempo.
 
 > Nome provisório — o código não depende dele.
 

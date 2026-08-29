@@ -1,6 +1,6 @@
 # Produto
 
-> Nome provisório: **Dayflow**. O nome não aparece no código — só aqui e em
+> Nome provisório: **Merid**. O nome não aparece no código — só aqui e em
 > três linhas do `app.json`. Renomear é barato de propósito.
 
 ## Proposta
