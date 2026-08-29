@@ -48,8 +48,8 @@ export type Task = {
   readonly dueDate: CalendarDate | null;
   readonly status: TaskStatus;
   readonly completedAt: Date | null;
-  readonly projectId: string | null;
   readonly createdAt: Date;
+  readonly updatedAt: Date;
 };
 
 /** Uma tarefa está atrasada se ainda está aberta e o prazo já passou. */

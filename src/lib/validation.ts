@@ -38,15 +38,3 @@ export function parseInput<TSchema extends z.ZodType>(
 
   return result.data;
 }
-
-/**
- * `FormData` -> objeto simples para o Zod.
- * Campos não preenchidos chegam como "" e são normalizados nos schemas.
- */
-export function formDataToObject(formData: FormData): Record<string, unknown> {
-  const entries: Record<string, unknown> = {};
-  for (const [key, value] of formData.entries()) {
-    entries[key] = typeof value === "string" ? value : undefined;
-  }
-  return entries;
-}

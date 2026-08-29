@@ -1,7 +1,7 @@
 # Produto
 
-> Nome provisório: **Dayflow**. O nome não aparece no código — só aqui e no
-> `layout.tsx`. Renomear deve custar uma linha.
+> Nome provisório: **Dayflow**. O nome não aparece no código — só aqui e em
+> três linhas do `app.json`. Renomear é barato de propósito.
 
 ## Proposta
 
@@ -42,6 +42,11 @@ implementação.
 
 ### R1 — Task e ScheduleBlock são entidades separadas
 
+> **Estado:** implementado na Etapa 2 (`public.schedule_blocks`). `tasks`
+> continua sem coluna de horário — é essa ausência que mantém a separação
+> conceitual honesta.
+
+
 Uma `Task` **não precisa** de horário para existir. Um `ScheduleBlock`
 representa a alocação temporal de uma `Task`.
 
@@ -50,11 +55,22 @@ sugeria 1:1, mas 1:N é necessário para dividir uma tarefa em sessões, para
 recorrência (R7) e para estender duração (R6) sem recriar nada. Uma tarefa com
 zero blocos é uma tarefa **não agendada**.
 
-### R2 — Inbox = tarefas sem nenhum bloco
+### R2 — "Não agendadas" = tarefas sem bloco relevante
 
-A Inbox não é um estado guardado na tarefa; é uma **consulta**: tarefas abertas
-que ainda não têm nenhum bloco de agenda. Agendar uma tarefa a tira da Inbox
-automaticamente, sem nenhum campo extra para manter sincronizado.
+Não é um estado guardado na tarefa; é uma **consulta**. Agendar tira a tarefa da
+lista automaticamente, sem nenhum campo extra para manter sincronizado.
+
+A definição precisa, decidida na Etapa 2:
+
+> Tarefa `TODO` **sem nenhum bloco terminando a partir do início de hoje**, no
+> fuso do usuário.
+
+Um bloco que ficou no passado não conta como agendamento: se a tarefa continua
+aberta, ela não foi feita e volta a precisar de horário.
+
+A lista vive na tela **Hoje**, ao lado da agenda — é ali que a pergunta "o que
+ainda não tem hora?" importa. A **Inbox** continua mostrando todas as tarefas
+abertas: ela é a tela de gestão, não a de planejamento do dia.
 
 ### R3 — Prazo é um DIA, não um instante
 
@@ -183,15 +199,16 @@ Ao clicar em um dia:
 | 7   | Prazo                                  | ✅ feito          |
 | 8   | Prioridade                             | ✅ feito          |
 | 9   | Inbox                                  | ✅ feito          |
-| 10  | Agendar tarefa em um horário           | ⬜ modelado       |
-| 11  | Visualizar agenda do dia               | ⬜                |
-| 12  | Remover / reagendar bloco              | ⬜ modelado       |
-| 13  | Visão semanal básica                   | ⬜                |
+| 10  | Agendar tarefa em um horário           | ✅ feito          |
+| 11  | Visualizar agenda do dia               | ✅ feito          |
+| 12  | Remover / reagendar bloco              | ✅ feito          |
+| 13  | Visão semanal básica                   | ⬜ Etapa 3        |
 | 14  | Persistência real                      | ✅ feito          |
 | 15  | Cálculo inicial de consistência        | ⬜ regra definida |
-| 16  | Heatmap de consistência                | ⬜                |
-| 17  | Layout responsivo                      | ✅ feito          |
-| 18  | PWA básica                             | ◐ manifest ok    |
+| 16  | Heatmap de consistência                | ⬜ Etapa 3        |
+| 17  | Layout responsivo (Android/iOS/Web)    | ✅ feito          |
+| 18  | Autenticação real                      | ✅ feito          |
+| 19  | Excluir tarefa                         | ✅ feito          |
 
 ### Depois do MVP
 

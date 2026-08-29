@@ -1,55 +1,60 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# dependências
+node_modules/
 
-# dependencies
-/node_modules
-/.pnp
-.pnp.*
-.yarn/*
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-!.yarn/versions
+# Expo
+.expo/
+dist/
+dist-native/
+web-build/
+expo-env.d.ts
+.metro-health-check*
 
-# testing
-/coverage
+# nativo
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+/ios
+/android
 
-# next.js
-/.next/
-/out/
+# Supabase (stack local; a pasta de migrations É versionada)
+supabase/.branches/
+supabase/.temp/
 
-# production
-/build
+# variáveis de ambiente — o template .env.example É versionado
+.env
+.env*.local
+!.env.example
 
-# misc
+# testes
+coverage/
+
+# TypeScript
+*.tsbuildinfo
+
+# sistema operacional
 .DS_Store
 *.pem
 
 # debug
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
+npm-debug.*
+yarn-debug.*
+yarn-error.*
 
-# env files (can opt-in for committing if needed)
-.env*
-
-# vercel
-.vercel
-
-# typescript
-*.tsbuildinfo
-next-env.d.ts
-
-/src/generated/prisma
-
-# permitir o template de variáveis de ambiente
-!.env.example
-
-# skills de agentes geradas pelo CLI do Prisma (recriáveis, não versionamos)
+# skills de agentes geradas por CLIs (recriáveis, não versionamos)
 /.agents/
 /.windsurf/
 /.claude/skills/
 /skills-lock.json
 
-# vitest
-/coverage/
+# quarentena da migração: artefatos derivados do projeto Next/Prisma.
+# Os arquivos-fonte legados continuam rastreados até a remoção autorizada.
+/_legacy_nextjs/.next/
+/_legacy_nextjs/node_modules/
+/_legacy_nextjs/src/generated/
+/_legacy_nextjs/next-env.d.ts
+/_legacy_nextjs/tsconfig.tsbuildinfo
+/_legacy_nextjs/.env

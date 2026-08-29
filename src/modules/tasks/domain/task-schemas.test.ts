@@ -1,58 +1,72 @@
-import { describe, expect, it } from "vitest";
-
 import { AppError } from "@/lib/errors";
 import { parseInput } from "@/lib/validation";
 
-import { createTaskInputSchema, setTaskCompletionInputSchema } from "./task-schemas";
+import { createTaskInputSchema } from "./task-schemas";
 
-const VALID_FORM = {
+/**
+ * Diferença em relação à Etapa 1: o formulário entrega tipos concretos
+ * (`number` para minutos), então o schema não faz mais coerção de string. A
+ * coerção existia por causa do `FormData` do Next, que não existe aqui.
+ */
+
+const VALID_INPUT = {
   title: "Estudar AEDS",
-  description: "",
-  estimatedMinutes: "90",
+  description: null,
+  estimatedMinutes: 90,
   priority: "HIGH",
   dueDate: "2026-09-01",
-  projectId: "",
-};
+} as const;
 
 describe("createTaskInputSchema", () => {
-  it("aceita o formulário completo e converte os tipos", () => {
-    expect(parseInput(createTaskInputSchema, VALID_FORM)).toEqual({
+  it("aceita a entrada completa", () => {
+    expect(parseInput(createTaskInputSchema, VALID_INPUT)).toEqual({
       title: "Estudar AEDS",
       description: null,
       estimatedMinutes: 90,
       priority: "HIGH",
       dueDate: "2026-09-01",
-      projectId: null,
     });
   });
 
-  it("remove espaços do título", () => {
-    const parsed = parseInput(createTaskInputSchema, { ...VALID_FORM, title: "  Revisar API  " });
+  it("remove espaços do título e da descrição", () => {
+    const parsed = parseInput(createTaskInputSchema, {
+      ...VALID_INPUT,
+      title: "  Revisar API  ",
+      description: "  dois endpoints  ",
+    });
+
     expect(parsed.title).toBe("Revisar API");
+    expect(parsed.description).toBe("dois endpoints");
+  });
+
+  it("trata texto vazio como ausente", () => {
+    const parsed = parseInput(createTaskInputSchema, {
+      ...VALID_INPUT,
+      description: "   ",
+      dueDate: "",
+    });
+
+    expect(parsed.description).toBeNull();
+    expect(parsed.dueDate).toBeNull();
   });
 
   it("usa prioridade média quando não informada", () => {
-    const withoutPriority: Record<string, unknown> = { ...VALID_FORM };
+    const withoutPriority: Record<string, unknown> = { ...VALID_INPUT };
     delete withoutPriority["priority"];
 
     expect(parseInput(createTaskInputSchema, withoutPriority).priority).toBe("MEDIUM");
   });
 
-  it("trata campos vazios como ausentes", () => {
-    const parsed = parseInput(createTaskInputSchema, { ...VALID_FORM, dueDate: "" });
-    expect(parsed.dueDate).toBeNull();
-  });
-
   it("rejeita título vazio ou só com espaços", () => {
-    expect(() => parseInput(createTaskInputSchema, { ...VALID_FORM, title: "   " })).toThrow(
+    expect(() => parseInput(createTaskInputSchema, { ...VALID_INPUT, title: "   " })).toThrow(
       AppError,
     );
   });
 
   it("expõe os erros por campo para o formulário", () => {
     try {
-      parseInput(createTaskInputSchema, { ...VALID_FORM, title: "", estimatedMinutes: "0" });
-      expect.unreachable("deveria ter lançado");
+      parseInput(createTaskInputSchema, { ...VALID_INPUT, title: "", estimatedMinutes: 0 });
+      throw new Error("deveria ter lançado antes desta linha");
     } catch (error) {
       expect(error).toBeInstanceOf(AppError);
       const appError = error as AppError;
@@ -62,55 +76,71 @@ describe("createTaskInputSchema", () => {
       );
     }
   });
+});
 
-  it("rejeita duração fora do intervalo permitido", () => {
-    for (const minutes of ["0", "-30", "1441"]) {
+describe("duração estimada", () => {
+  it("é obrigatória", () => {
+    const withoutDuration: Record<string, unknown> = { ...VALID_INPUT };
+    delete withoutDuration["estimatedMinutes"];
+
+    expect(() => parseInput(createTaskInputSchema, withoutDuration)).toThrow(AppError);
+  });
+
+  it("rejeita valores fora do intervalo de 1 minuto a 24 horas", () => {
+    for (const minutes of [0, -30, 1441]) {
       expect(() =>
-        parseInput(createTaskInputSchema, { ...VALID_FORM, estimatedMinutes: minutes }),
+        parseInput(createTaskInputSchema, { ...VALID_INPUT, estimatedMinutes: minutes }),
       ).toThrow(AppError);
     }
   });
 
+  it("aceita os limites exatos", () => {
+    expect(
+      parseInput(createTaskInputSchema, { ...VALID_INPUT, estimatedMinutes: 1 }).estimatedMinutes,
+    ).toBe(1);
+    expect(
+      parseInput(createTaskInputSchema, { ...VALID_INPUT, estimatedMinutes: 1440 })
+        .estimatedMinutes,
+    ).toBe(1440);
+  });
+
   it("rejeita duração fracionada", () => {
     expect(() =>
-      parseInput(createTaskInputSchema, { ...VALID_FORM, estimatedMinutes: "12.5" }),
+      parseInput(createTaskInputSchema, { ...VALID_INPUT, estimatedMinutes: 12.5 }),
     ).toThrow(AppError);
   });
 
-  it("rejeita prazo com horário: prazo é DIA, não instante", () => {
+  it("rejeita texto: a conversão é responsabilidade do formulário", () => {
     expect(() =>
-      parseInput(createTaskInputSchema, { ...VALID_FORM, dueDate: "2026-09-01T14:00:00Z" }),
-    ).toThrow(AppError);
-  });
-
-  it("rejeita prazo em dia inexistente", () => {
-    expect(() =>
-      parseInput(createTaskInputSchema, { ...VALID_FORM, dueDate: "2026-02-30" }),
-    ).toThrow(AppError);
-  });
-
-  it("rejeita prioridade desconhecida", () => {
-    expect(() =>
-      parseInput(createTaskInputSchema, { ...VALID_FORM, priority: "CRITICAL" }),
-    ).toThrow(AppError);
-  });
-
-  it("rejeita título acima do limite", () => {
-    expect(() =>
-      parseInput(createTaskInputSchema, { ...VALID_FORM, title: "a".repeat(201) }),
+      parseInput(createTaskInputSchema, { ...VALID_INPUT, estimatedMinutes: "90" }),
     ).toThrow(AppError);
   });
 });
 
-describe("setTaskCompletionInputSchema", () => {
-  it("aceita id válido com booleano", () => {
-    const input = { id: "0199a4a1-9a3b-7c1e-8f2a-3b4c5d6e7f80", completed: true };
-    expect(parseInput(setTaskCompletionInputSchema, input)).toEqual(input);
+describe("prazo", () => {
+  it("rejeita prazo com horário: prazo é DIA, não instante", () => {
+    expect(() =>
+      parseInput(createTaskInputSchema, { ...VALID_INPUT, dueDate: "2026-09-01T14:00:00Z" }),
+    ).toThrow(AppError);
   });
 
-  it("rejeita id que não é uuid", () => {
+  it("rejeita dia inexistente", () => {
     expect(() =>
-      parseInput(setTaskCompletionInputSchema, { id: "123", completed: true }),
+      parseInput(createTaskInputSchema, { ...VALID_INPUT, dueDate: "2026-02-30" }),
+    ).toThrow(AppError);
+  });
+
+  it("rejeita formato brasileiro", () => {
+    expect(() =>
+      parseInput(createTaskInputSchema, { ...VALID_INPUT, dueDate: "01/09/2026" }),
+    ).toThrow(AppError);
+  });
+});
+
+describe("prioridade", () => {
+  it("rejeita valor desconhecido", () => {
+    expect(() =>
+      parseInput(createTaskInputSchema, { ...VALID_INPUT, priority: "CRITICAL" }),
     ).toThrow(AppError);
   });
 });

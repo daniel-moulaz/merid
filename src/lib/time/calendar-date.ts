@@ -83,6 +83,17 @@ export function addDaysToCalendarDate(value: CalendarDate, days: number): Calend
   return utcDateToCalendarDate(date);
 }
 
+/**
+ * Dia da semana de uma data civil: 0 = domingo … 6 = sábado.
+ *
+ * Lido pelos componentes UTC do ancoramento, nunca por `getDay()` local — uma
+ * data civil não tem fuso, e usar o relógio da máquina aqui é o bug clássico
+ * de "a semana começou no dia errado".
+ */
+export function weekdayOfCalendarDate(value: CalendarDate): number {
+  return calendarDateToUtcDate(value).getUTCDay();
+}
+
 /** Diferença em dias (b - a). */
 export function daysBetweenCalendarDates(a: CalendarDate, b: CalendarDate): number {
   const MS_PER_DAY = 86_400_000;

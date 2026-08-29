@@ -1,5 +1,3 @@
-import { describe, expect, it } from "vitest";
-
 import { isDueToday, isOverdue, taskCompletionFields, taskReopenFields } from "./task";
 
 const TODAY = "2026-08-29";
