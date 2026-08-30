@@ -1,17 +1,19 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { useState } from "react";
-import { StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 
 import { isAppError } from "@/lib/errors";
 import {
   addDaysToCalendarDate,
   DEFAULT_ESTIMATED_MINUTES,
-  formatCalendarDate,
+  formatCalendarDateBR,
   type CalendarDate,
 } from "@/lib/time";
-import { spacing } from "@/theme/tokens";
+import { control, radius, spacing } from "@/theme/tokens";
+import { useThemeColors } from "@/theme/use-theme";
 import { Button } from "@/ui/button";
+import { MiniCalendar } from "@/ui/mini-calendar";
 import { SegmentedField } from "@/ui/segmented-field";
 import { Text } from "@/ui/text";
 import { TextField } from "@/ui/text-field";
@@ -31,8 +33,22 @@ import {
 /**
  * Formulário de tarefa, usado para criar e para editar.
  *
- * Duração é obrigatória e tem valor padrão: o caminho rápido é digitar o
- * título e confirmar. Prazo tem atalhos "Hoje" e "Amanhã" — em um app de
+ * ## Um campo na frente, o resto atrás de uma dobra
+ *
+ * Registrar uma ideia precisa custar uma frase. Quando duração, prazo e
+ * prioridade aparecem todos de uma vez, a tela comunica "preencha um
+ * formulário" — e o custo percebido de anotar "ligar pro dentista" fica maior
+ * que o de não anotar. Aí a pessoa não anota, e a Inbox deixa de ser confiável.
+ *
+ * Então só o TÍTULO fica visível, com foco automático e Enter para salvar. Os
+ * demais campos continuam todos ali, a um toque em "Mais opções" — nada foi
+ * removido, só deixou de ser cobrado adiantado.
+ *
+ * Ao EDITAR, a dobra já abre: quem entrou para mudar alguma coisa quase nunca
+ * veio mudar o título, e esconder o que a pessoa veio procurar seria trocar um
+ * atrito por outro.
+ *
+ * Duração tem padrão e prazo tem atalhos "Hoje" e "Amanhã" — em um app de
  * agenda são as escolhas mais comuns, e digitar data é lento no celular.
  */
 
@@ -42,6 +58,15 @@ type TaskFormProps = {
   readonly submitLabel: string;
   readonly onSubmit: (input: CreateTaskInput) => Promise<void>;
   readonly onCancel?: (() => void) | undefined;
+  /**
+   * Excluir a tarefa.
+   *
+   * Mora aqui, e não na linha da lista, porque excluir é uma ação SOBRE a
+   * tarefa: seu lugar é junto do resto dela, atrás da intenção de abrir. Na
+   * linha ela ficava a um toque de distância da ação mais repetida do produto,
+   * que é concluir.
+   */
+  readonly onDelete?: (() => void) | undefined;
   readonly autoFocus?: boolean;
 };
 
@@ -51,9 +76,12 @@ export function TaskForm({
   submitLabel,
   onSubmit,
   onCancel,
+  onDelete,
   autoFocus = false,
 }: TaskFormProps) {
+  const colors = useThemeColors();
   const [formError, setFormError] = useState<string | null>(null);
+  const [showMore, setShowMore] = useState(initialValue !== undefined);
 
   const { control, handleSubmit, formState, reset, setValue } = useForm<
     CreateTaskFormValues,
@@ -114,71 +142,34 @@ export function TaskForm({
         )}
       />
 
-      <View style={styles.row}>
-        <View style={styles.duration}>
-          <Controller
-            control={control}
-            name="estimatedMinutes"
-            render={({ field }) => (
-              <TextField
-                label="Duração (min)"
-                value={String(field.value ?? "")}
-                onChangeText={(text) => {
-                  const digits = text.replace(/[^0-9]/g, "");
-                  field.onChange(digits === "" ? Number.NaN : Number(digits));
-                }}
-                onBlur={field.onBlur}
-                keyboardType="number-pad"
-                inputMode="numeric"
-                maxLength={4}
-                error={formState.errors.estimatedMinutes?.message}
-              />
-            )}
+      {showMore ? (
+        <>
+      <Controller
+        control={control}
+        name="estimatedMinutes"
+        render={({ field }) => (
+          <TextField
+            label="Duração (min)"
+            value={String(field.value ?? "")}
+            onChangeText={(text) => {
+              const digits = text.replace(/[^0-9]/g, "");
+              field.onChange(digits === "" ? Number.NaN : Number(digits));
+            }}
+            onBlur={field.onBlur}
+            keyboardType="number-pad"
+            inputMode="numeric"
+            maxLength={4}
+            error={formState.errors.estimatedMinutes?.message}
           />
-        </View>
+        )}
+      />
 
-        <View style={styles.due}>
-          <Controller
-            control={control}
-            name="dueDate"
-            render={({ field }) => (
-              <TextField
-                label="Prazo (AAAA-MM-DD)"
-                placeholder="sem prazo"
-                value={field.value ?? ""}
-                onChangeText={(text) => field.onChange(text === "" ? null : text)}
-                onBlur={field.onBlur}
-                autoCapitalize="none"
-                autoCorrect={false}
-                inputMode="numeric"
-                maxLength={10}
-                error={formState.errors.dueDate?.message}
-              />
-            )}
-          />
-        </View>
-      </View>
-
-      <View style={styles.chips}>
-        <DueDateChip
-          label="Hoje"
-          value={today}
-          current={dueDate}
-          onPress={(value) => setValue("dueDate", value, { shouldValidate: true })}
-        />
-        <DueDateChip
-          label="Amanhã"
-          value={addDaysToCalendarDate(today, 1)}
-          current={dueDate}
-          onPress={(value) => setValue("dueDate", value, { shouldValidate: true })}
-        />
-        <DueDateChip
-          label="Sem prazo"
-          value={null}
-          current={dueDate}
-          onPress={(value) => setValue("dueDate", value, { shouldValidate: true })}
-        />
-      </View>
+      <DueDateSection
+        today={today}
+        value={dueDate ?? null}
+        error={formState.errors.dueDate?.message}
+        onChange={(next) => setValue("dueDate", next, { shouldValidate: true })}
+      />
 
       <Controller
         control={control}
@@ -195,6 +186,30 @@ export function TaskForm({
           />
         )}
       />
+      <Controller
+        control={control}
+        name="description"
+        render={({ field }) => (
+          <TextField
+            label="Notas"
+            placeholder="Links, lembretes, o que precisar para fazer isso"
+            value={field.value ?? ""}
+            onChangeText={(text) => field.onChange(text === "" ? null : text)}
+            onBlur={field.onBlur}
+            multiline
+            numberOfLines={4}
+            error={formState.errors.description?.message}
+          />
+        )}
+      />
+        </>
+      ) : (
+        <Button
+          label="Mais opções"
+          variant="ghost"
+          onPress={() => setShowMore(true)}
+        />
+      )}
 
       {formError === null ? null : (
         <Text variant="caption" tone="danger" accessibilityLiveRegion="polite">
@@ -213,40 +228,142 @@ export function TaskForm({
           style={styles.action}
         />
       </View>
+
+      {onDelete === undefined ? null : (
+        <View style={[styles.destructive, { borderTopColor: colors.border }]}>
+          <Button label="Excluir tarefa" variant="ghost" size="md" onPress={onDelete} />
+        </View>
+      )}
     </View>
   );
 }
 
-function DueDateChip({
-  label,
+/**
+ * Prazo.
+ *
+ * ## O que mudou, e por quê
+ *
+ * Era um campo de texto pedindo `AAAA-MM-DD` ao lado da duração. Três problemas
+ * de uma vez: obrigava a digitar data num teclado de celular, usava um formato
+ * que ninguém escreve no Brasil, e não respondia "que dia da semana cai isso?".
+ *
+ * Agora a estrutura segue o que a pessoa realmente quer, na ordem de
+ * frequência: os atalhos resolvem a esmagadora maioria dos casos com um toque,
+ * e o calendário — que não pede digitação nenhuma — cobre o resto. O campo de
+ * texto sumiu; não há mais como digitar uma data inválida.
+ */
+function DueDateSection({
+  today,
   value,
-  current,
-  onPress,
+  error,
+  onChange,
 }: {
-  readonly label: string;
+  readonly today: CalendarDate;
   readonly value: CalendarDate | null;
-  readonly current: CalendarDate | null | undefined;
-  readonly onPress: (value: CalendarDate | null) => void;
+  readonly error?: string | undefined;
+  readonly onChange: (value: CalendarDate | null) => void;
 }) {
-  const isSelected = current === value;
+  const colors = useThemeColors();
+  const [showsCalendar, setShowsCalendar] = useState(false);
+
+  const tomorrow = addDaysToCalendarDate(today, 1);
+  const nextWeek = addDaysToCalendarDate(today, 7);
+
+  const shortcuts: readonly { readonly label: string; readonly value: CalendarDate | null }[] = [
+    { label: "Hoje", value: today },
+    { label: "Amanhã", value: tomorrow },
+    { label: "Em 7 dias", value: nextWeek },
+    { label: "Sem prazo", value: null },
+  ];
+
+  // A data escolhida à mão — a que nenhum atalho representa — merece aparecer
+  // como escolha, e não sumir porque nenhum botão está aceso.
+  const isCustom =
+    value !== null && value !== today && value !== tomorrow && value !== nextWeek;
 
   return (
-    <Button
-      label={value === null ? label : `${label} · ${formatCalendarDate(value)}`}
-      variant={isSelected ? "secondary" : "ghost"}
-      onPress={() => onPress(value)}
-      style={styles.chip}
-    />
+    <View style={styles.dueSection}>
+      <Text variant="label" muted>
+        Prazo
+      </Text>
+
+      <View style={styles.chips}>
+        {shortcuts.map((shortcut) => (
+          <Button
+            key={shortcut.label}
+            label={shortcut.label}
+            variant={value === shortcut.value ? "secondary" : "ghost"}
+            size="sm"
+            onPress={() => onChange(shortcut.value)}
+            style={styles.chip}
+          />
+        ))}
+      </View>
+
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ expanded: showsCalendar }}
+        accessibilityLabel={
+          value === null
+            ? "Escolher data no calendário"
+            : `Prazo em ${formatCalendarDateBR(value)}. Escolher outra data no calendário.`
+        }
+        onPress={() => setShowsCalendar((shown) => !shown)}
+        style={({ pressed }) => [
+          styles.calendarToggle,
+          {
+            borderColor: isCustom ? colors.accent : colors.border,
+            backgroundColor: pressed ? colors.surfaceRaised : "transparent",
+          },
+        ]}
+      >
+        <Text variant="label" muted={value === null}>
+          {value === null ? "Escolher no calendário" : formatCalendarDateBR(value)}
+        </Text>
+        <Text variant="caption" style={{ color: colors.accent }}>
+          {showsCalendar ? "Fechar" : "Calendário"}
+        </Text>
+      </Pressable>
+
+      {showsCalendar ? (
+        <MiniCalendar
+          value={value}
+          today={today}
+          onChange={onChange}
+          accessibilityLabel="Prazo"
+        />
+      ) : null}
+
+      {error === undefined || error === "" ? null : (
+        <Text variant="caption" tone="danger">
+          {error}
+        </Text>
+      )}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { gap: spacing.md },
-  row: { flexDirection: "row", gap: spacing.md },
-  duration: { flex: 1 },
-  due: { flex: 1.4 },
+  dueSection: { gap: spacing.sm },
   chips: { flexDirection: "row", gap: spacing.xs, flexWrap: "wrap" },
-  chip: { minHeight: 34, paddingHorizontal: spacing.md, flexGrow: 1 },
+  chip: { flexGrow: 1, flexBasis: 76 },
+  calendarToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+    minHeight: control.minTouch,
+    paddingHorizontal: spacing.md,
+    borderWidth: 1,
+    borderRadius: radius.md,
+  },
   actions: { flexDirection: "row", gap: spacing.sm },
   action: { flex: 1 },
+  /** Separado por uma linha: o que apaga não divide espaço com o que salva. */
+  destructive: {
+    alignItems: "flex-start",
+    paddingTop: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
 });

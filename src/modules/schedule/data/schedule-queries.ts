@@ -24,6 +24,7 @@ import {
   type ScheduleBlock,
   type ScheduleBlockWithTask,
 } from "../domain/schedule-block";
+import { monthRangeInTimeZone } from "../domain/month";
 import { weekRangeInTimeZone } from "../domain/week";
 import type {
   CreateScheduleBlockInput,
@@ -105,6 +106,27 @@ export function useWeekBlocks(weekStart: CalendarDate) {
   });
 }
 
+/**
+ * Blocos que intersectam a grade do mês, com a tarefa de cada um.
+ *
+ * Uma consulta por mês, com o MESMO repositório do dia e da semana: o que muda
+ * é só o intervalo. A visão de mês não precisou de consulta nova nem de um
+ * agregado próprio — ela conta em memória o que já veio.
+ *
+ * `monthStart` precisa vir normalizado por `startOfMonth`: é a chave de cache,
+ * e duas datas do mesmo mês não podem gerar duas entradas.
+ */
+export function useMonthBlocks(monthStart: CalendarDate) {
+  const { userId } = useAuth();
+  const timeZone = useTimeZone();
+
+  return useQuery({
+    queryKey: scheduleKeys.month(userId ?? "anonymous", monthStart),
+    queryFn: () => fetchBlocksInRange(monthRangeInTimeZone(monthStart, timeZone)),
+    enabled: userId !== null,
+  });
+}
+
 /** Um bloco pelo id — a tela de reagendamento pode abrir sem a agenda em cache. */
 export function useScheduleBlock(id: string | undefined) {
   const { userId } = useAuth();
@@ -143,6 +165,13 @@ export type UnscheduledTasksResult = {
   readonly tasks: readonly Task[];
   readonly isPending: boolean;
   readonly isError: boolean;
+  /**
+   * A conta tem alguma tarefa aberta, agendada ou não.
+   *
+   * Distingue "acabei de criar a conta" de "já organizei tudo" — dois estados
+   * vazios que pedem frases diferentes.
+   */
+  readonly hasAnyTask: boolean;
 };
 
 /**
@@ -168,6 +197,7 @@ export function useUnscheduledTasks(): UnscheduledTasksResult {
     tasks,
     isPending: openTasks.isPending || scheduled.isPending,
     isError: openTasks.isError || scheduled.isError,
+    hasAnyTask: (openTasks.data ?? []).length > 0,
   };
 }
 
@@ -184,18 +214,6 @@ export function useCreateScheduleBlock() {
 
   return useMutation({
     mutationFn: (input: CreateScheduleBlockInput) => createScheduleBlock(input),
-    onSuccess: () =>
-      userId === null ? undefined : invalidateScheduleAndTasks(queryClient, userId),
-  });
-}
-
-/** Editar horário e reagendar são a mesma operação. */
-export function useUpdateScheduleBlock() {
-  const queryClient = useQueryClient();
-  const { userId } = useAuth();
-
-  return useMutation({
-    mutationFn: (input: UpdateScheduleBlockInput) => updateScheduleBlock(input),
     onSuccess: () =>
       userId === null ? undefined : invalidateScheduleAndTasks(queryClient, userId),
   });
@@ -218,6 +236,69 @@ function restoreBlockCaches(queryClient: QueryClient, caches: BlockCaches): void
   for (const [key, value] of caches) {
     queryClient.setQueryData(key, value);
   }
+}
+
+/**
+ * Editar horário, reagendar e ARRASTAR são a mesma operação: um UPDATE do bloco.
+ *
+ * ## Por que esta é otimista, ao contrário da criação
+ *
+ * O arrasto termina quando o dedo levanta, e nesse instante o cartão volta a se
+ * desenhar a partir do CACHE — o deslocamento visual do gesto já foi descartado.
+ * Sem atualização otimista o bloco pulava de volta ao horário antigo e só
+ * chegava ao novo quando o servidor respondesse: um "não funcionou" seguido de
+ * um "ah, funcionou", justamente na interação mais frequente da agenda.
+ *
+ * O rollback é o mesmo mecanismo que remover e concluir já usavam — devolver os
+ * intervalos que estavam em cache. É isso que sustenta a garantia de nunca
+ * exibir um horário que o banco recusou: se a escrita falha, o bloco volta
+ * sozinho para onde estava, e quem chamou mostra o erro.
+ *
+ * A correção só mexe nos INSTANTES. Um bloco arrastado para fora do dia
+ * consultado continua aparecendo ali até a invalidação chegar — é uma janela de
+ * milissegundos, e o preço de não reimplementar o recorte por intervalo aqui.
+ */
+export function useUpdateScheduleBlock() {
+  const queryClient = useQueryClient();
+  const { userId } = useAuth();
+
+  return useMutation<
+    ScheduleBlock,
+    Error,
+    UpdateScheduleBlockInput,
+    { readonly caches: BlockCaches }
+  >({
+    mutationFn: (input) => updateScheduleBlock(input),
+
+    onMutate: async (input) => {
+      if (userId === null) return { caches: [] };
+
+      await queryClient.cancelQueries({ queryKey: scheduleKeys.all(userId) });
+      const caches = snapshotBlockCaches(queryClient, userId);
+
+      queryClient.setQueriesData<ScheduleBlockWithTask[]>(
+        { queryKey: scheduleKeys.blocks(userId) },
+        (entries) =>
+          (entries ?? []).map((entry) =>
+            entry.block.id === input.id
+              ? {
+                  ...entry,
+                  block: { ...entry.block, startsAt: input.startsAt, endsAt: input.endsAt },
+                }
+              : entry,
+          ),
+      );
+
+      return { caches };
+    },
+
+    onError: (_error, _input, context) => {
+      if (context !== undefined) restoreBlockCaches(queryClient, context.caches);
+    },
+
+    onSettled: () =>
+      userId === null ? undefined : invalidateScheduleAndTasks(queryClient, userId),
+  });
 }
 
 /**

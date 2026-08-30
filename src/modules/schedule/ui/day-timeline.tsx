@@ -1,7 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { RefreshControl, ScrollView, StyleSheet, View } from "react-native";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 
-import { toCalendarDateInTimeZone, type CalendarDate } from "@/lib/time";
+import {
+  minutesToTimeOfDay,
+  toCalendarDateInTimeZone,
+  type CalendarDate,
+  type TimeOfDay,
+} from "@/lib/time";
 import { fontSize, radius, spacing, timeline as timelineTokens } from "@/theme/tokens";
 import { useThemeColors } from "@/theme/use-theme";
 import { Text } from "@/ui/text";
@@ -9,12 +14,24 @@ import { Text } from "@/ui/text";
 import type { ScheduleBlockWithTask } from "../domain/schedule-block";
 import {
   buildTimelineWindow,
+  dayBlockContinuity,
   hourMarks,
   layoutBlocks,
   minuteOffsetInWindow,
   type TimelineWindow,
 } from "../domain/timeline";
+import { canDragToMove } from "../domain/move-block";
+import {
+  SCHEDULE_SNAP_MINUTES,
+  snapMinute,
+  type IntervalSelection,
+} from "../domain/interval-selection";
+import { IntervalSelectionSurface } from "./interval-selection-surface";
+import { useBlockMove } from "./use-block-move";
+import { pressOffsetY } from "./press-position";
 import { ScheduleBlockCard } from "./schedule-block-card";
+import { SelectionPreview } from "./selection-preview";
+import { useIntervalSelection } from "./use-interval-selection";
 
 /**
  * A timeline vertical do dia — a tela principal do produto.
@@ -29,6 +46,8 @@ import { ScheduleBlockCard } from "./schedule-block-card";
 /** Âncora de rolagem para um dia sem blocos: começo do horário comercial. */
 const DEFAULT_ANCHOR_MINUTE = 8 * 60;
 
+const MINUTES_IN_DAY = 1440;
+
 /** O que a timeline recebe: o bloco identificado pelo id do próprio bloco. */
 type TimelineEntry = ScheduleBlockWithTask & { readonly id: string };
 
@@ -38,6 +57,10 @@ export function DayTimeline({
   timeZone,
   entries,
   onSelectBlock,
+  onSelectSlot,
+  onSelectRange,
+  onMoveBlock,
+  isLoaded = true,
   isRefreshing = false,
   onRefresh,
 }: {
@@ -46,6 +69,25 @@ export function DayTimeline({
   readonly timeZone: string;
   readonly entries: readonly ScheduleBlockWithTask[];
   readonly onSelectBlock: (entry: ScheduleBlockWithTask) => void;
+  /** Toque em um horário vazio: caminho rápido, a duração vem da tarefa. */
+  readonly onSelectSlot: (date: CalendarDate, startTime: TimeOfDay) => void;
+  /** Fim de um arrasto: início e fim escolhidos explicitamente. */
+  readonly onSelectRange: (date: CalendarDate, start: TimeOfDay, end: TimeOfDay) => void;
+  /** Fim de um arrasto de bloco: novo horário, mesma duração. */
+  readonly onMoveBlock: (
+    entry: ScheduleBlockWithTask,
+    date: CalendarDate,
+    start: TimeOfDay,
+    end: TimeOfDay,
+  ) => void;
+  /**
+   * Os blocos do dia já chegaram?
+   *
+   * A âncora inicial depende deles: em um dia que não é hoje ela é o primeiro
+   * bloco. Ancorar antes da resposta deixava a pessoa parada às 08:00 olhando
+   * para o vazio, com o dia inteiro planejado logo abaixo da dobra.
+   */
+  readonly isLoaded?: boolean;
   readonly isRefreshing?: boolean;
   readonly onRefresh?: (() => void) | undefined;
 }) {
@@ -105,18 +147,119 @@ export function DayTimeline({
     return Math.max(0, minutesFromTop * timelineTokens.day.pixelsPerMinute);
   }, [date, today, window, positioned]);
 
+  /**
+   * Seleção por arrasto — a mesma geometria que desenha a grade.
+   *
+   * `window.startMinute` e `endMinute` são offsets desde o início do dia nesta
+   * tela (ver `timeline.ts`), e não minutos de relógio; a diferença não importa
+   * aqui, porque o domínio da seleção só trabalha com a régua que recebe.
+   */
+  const selectionGeometry = useMemo(
+    () => ({
+      windowStartMinute: window.startMinute,
+      pixelsPerMinute: timelineTokens.day.pixelsPerMinute,
+      bounds: { minMinute: window.startMinute, maxMinute: window.endMinute },
+    }),
+    [window.startMinute, window.endMinute],
+  );
+
+  const commitRange = useCallback(
+    (day: CalendarDate, selection: IntervalSelection) => {
+      onSelectRange(
+        day,
+        minutesToTimeOfDay(selection.startMinute % MINUTES_IN_DAY),
+        minutesToTimeOfDay(selection.endMinute % MINUTES_IN_DAY),
+      );
+    },
+    [onSelectRange],
+  );
+
+  const { selection, onStart, onMove, onFinish, cancel } = useIntervalSelection({
+    geometry: selectionGeometry,
+    onCommit: commitRange,
+  });
+
+  const blocksById = useMemo(
+    () => new Map(identified.map((entry) => [entry.block.id, entry])),
+    [identified],
+  );
+
+  const commitMove = useCallback(
+    (blockId: string, startMinute: number, endMinute: number) => {
+      const entry = blocksById.get(blockId);
+      if (entry === undefined) return;
+
+      onMoveBlock(
+        entry,
+        date,
+        minutesToTimeOfDay(startMinute % MINUTES_IN_DAY),
+        minutesToTimeOfDay(endMinute % MINUTES_IN_DAY),
+      );
+    },
+    [blocksById, date, onMoveBlock],
+  );
+
+  const move = useBlockMove({
+    geometry: {
+      pixelsPerMinute: timelineTokens.day.pixelsPerMinute,
+      bounds: { minMinute: window.startMinute, maxMinute: window.endMinute },
+    },
+    onCommit: commitMove,
+  });
+
+  /** Recusa o gesto quando ele nasce sobre um bloco já agendado. */
+  const beginSelection = useCallback(
+    (_x: number, y: number): boolean => {
+      const minute = window.startMinute + y / timelineTokens.day.pixelsPerMinute;
+      const occupied = positioned.some(
+        (item) => minute >= item.startMinute && minute < item.endMinute,
+      );
+      if (occupied) return false;
+
+      onStart(date, y);
+      return true;
+    },
+    [date, onStart, positioned, window.startMinute],
+  );
+
+  /** Toque simples: só o início; a duração continua vindo da tarefa. */
+  const tapSlot = useCallback(
+    (y: number | null) => {
+      // Sem posição (ativação por teclado): abre no início da janela visível,
+      // que é o horário que a pessoa está de fato olhando.
+      const raw =
+        y === null ? window.startMinute : window.startMinute + y / timelineTokens.day.pixelsPerMinute;
+      const clamped = Math.min(
+        Math.max(snapMinute(raw), window.startMinute),
+        MINUTES_IN_DAY - SCHEDULE_SNAP_MINUTES,
+      );
+      onSelectSlot(date, minutesToTimeOfDay(clamped % MINUTES_IN_DAY));
+    },
+    [date, onSelectSlot, window.startMinute],
+  );
+
   const scrollRef = useRef<ScrollView>(null);
-  // O ajuste vale uma vez por dia exibido: depois disso a rolagem é do usuário.
-  const scrolledForDate = useRef<CalendarDate | null>(null);
+  /**
+   * O ajuste vale uma vez por dia exibido — e uma vez mais quando os blocos
+   * daquele dia chegam, porque só então a âncora é a definitiva. Depois disso a
+   * rolagem é do usuário.
+   *
+   * Um efeito, e não `onContentSizeChange`: quando os blocos cabem na janela
+   * padrão a altura do conteúdo não muda, então aquele callback nem dispararia.
+   * É o mesmo mecanismo da grade semanal.
+   */
+  const scrolledFor = useRef<string | null>(null);
+  const scrollKey = `${date}|${isLoaded ? "ready" : "pending"}`;
+
+  useEffect(() => {
+    if (scrolledFor.current === scrollKey || height === 0) return;
+    scrolledFor.current = scrollKey;
+    scrollRef.current?.scrollTo({ y: initialOffset, animated: false });
+  }, [scrollKey, initialOffset, height]);
 
   return (
     <ScrollView
       ref={scrollRef}
-      onContentSizeChange={() => {
-        if (scrolledForDate.current === date) return;
-        scrolledForDate.current = date;
-        scrollRef.current?.scrollTo({ y: initialOffset, animated: false });
-      }}
       style={styles.scroll}
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
@@ -132,7 +275,7 @@ export function DayTimeline({
           const top = (mark.minute - window.startMinute) * timelineTokens.day.pixelsPerMinute;
 
           return (
-            <View key={mark.minute} style={[styles.hourRow, { top }]} pointerEvents="none">
+            <View key={mark.minute} style={[styles.hourRow, { top }]}>
               <Text
                 variant="caption"
                 muted
@@ -151,15 +294,57 @@ export function DayTimeline({
 
         {/* Faixa dos blocos, à direita da régua. */}
         <View style={styles.lanes}>
-          {positioned.map((item) => (
-            <ScheduleBlockCard
-              key={item.item.id}
-              positioned={item}
-              timeZone={timeZone}
-              windowStartMinute={window.startMinute}
-              onPress={() => onSelectBlock(item.item)}
+          <IntervalSelectionSurface
+            onStart={beginSelection}
+            onMove={(_x, y) => onMove(y)}
+            onFinish={onFinish}
+            onCancel={cancel}
+          >
+            {/* Camada de toque ATRÁS de tudo: o caminho rápido continua sendo
+                um toque, e é ele que mantém a criação acessível sem gesto. */}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Agendar uma tarefa neste dia"
+              accessibilityHint="Escolhe o horário tocado e abre a seleção de tarefa"
+              // Enquanto um intervalo está sendo desenhado, o toque simples sai
+              // de cena: soltar o dedo ao fim de uma seleção não pode também
+              // contar como um toque e abrir um segundo agendamento.
+              disabled={selection !== null}
+              onPress={(event) => tapSlot(pressOffsetY(event))}
+              style={StyleSheet.absoluteFill}
             />
-          ))}
+
+            {selection === null ? null : (
+              <SelectionPreview
+                selection={selection.selection}
+                windowStartMinute={window.startMinute}
+                pixelsPerMinute={timelineTokens.day.pixelsPerMinute}
+              />
+            )}
+
+            {positioned.map((item) => (
+              <ScheduleBlockCard
+                key={item.item.id}
+                positioned={item}
+                timeZone={timeZone}
+                windowStartMinute={window.startMinute}
+                onPress={() => onSelectBlock(item.item)}
+                // Um bloco recortado pela meia-noite não é arrastável: o que
+                // está desenhado é um PEDAÇO, e gravar o pedaço apagaria o
+                // resto do bloco. Mesma regra da grade semanal.
+                moveGesture={
+                  canDragToMove(dayBlockContinuity(item.item.block, window))
+                    ? move.gestureFor(
+                        item.item.block.id,
+                        { startMinute: item.startMinute, endMinute: item.endMinute },
+                        true,
+                      )
+                    : undefined
+                }
+                movedTo={move.offsetFor(item.item.block.id)}
+              />
+            ))}
+          </IntervalSelectionSurface>
         </View>
       </View>
     </ScrollView>
@@ -205,7 +390,6 @@ function NowIndicator({
   return (
     <View
       style={[styles.now, { top }]}
-      pointerEvents="none"
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
     >
@@ -223,6 +407,7 @@ const styles = StyleSheet.create({
   canvas: { position: "relative", width: "100%" },
 
   hourRow: {
+    pointerEvents: "none",
     position: "absolute",
     left: 0,
     right: 0,
@@ -252,6 +437,7 @@ const styles = StyleSheet.create({
   },
 
   now: {
+    pointerEvents: "none",
     position: "absolute",
     left: timelineTokens.day.gutterWidth - 4,
     right: 0,

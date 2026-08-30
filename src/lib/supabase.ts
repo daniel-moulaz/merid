@@ -5,6 +5,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { AppState, Platform } from "react-native";
 
 import type { Database } from "./database.types";
+import { AppError } from "./errors";
 
 /**
  * Cliente Supabase — o único ponto de acesso ao backend.
@@ -26,6 +27,50 @@ if (!supabaseUrl || !supabasePublishableKey) {
 }
 
 const isWeb = Platform.OS === "web";
+
+/**
+ * Teto de espera de uma requisição.
+ *
+ * Sem ele, uma rede que aceita a conexão mas nunca responde — túnel, portal de
+ * Wi-Fi, servidor sobrecarregado — deixa a tela girando para sempre, porque
+ * `fetch` não tem prazo por conta própria. Quinze segundos são generosos para
+ * uma consulta desta escala e curtos o bastante para a pessoa entender que
+ * algo falhou em vez de ficar esperando.
+ */
+const REQUEST_TIMEOUT_MS = 15_000;
+
+/**
+ * `fetch` com prazo.
+ *
+ * O `AbortController` é criado por requisição e sempre limpo no `finally`,
+ * então nenhum temporizador fica pendurado depois que a resposta chega. O erro
+ * de aborto é traduzido aqui mesmo, porque é o único lugar que sabe a
+ * diferença entre "o servidor recusou" e "ninguém respondeu".
+ */
+async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } catch (cause) {
+    // Aborto por prazo e falha de DNS/offline chegam como erros diferentes,
+    // mas significam a mesma coisa para quem está usando o aplicativo.
+    throw new AppError(
+      "NETWORK",
+      controller.signal.aborted
+        ? "O servidor demorou para responder. Verifique sua conexão e tente de novo."
+        : "Não foi possível falar com o servidor. Verifique sua conexão.",
+      undefined,
+      { cause },
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 /**
  * Durante o `expo export` a página é renderizada no Node, onde não existe
@@ -50,6 +95,7 @@ export const supabase: SupabaseClient<Database> = createClient<Database>(
   supabaseUrl,
   supabasePublishableKey,
   {
+    global: { fetch: fetchWithTimeout },
     auth: {
       storage: resolveStorage(),
       // Sessão sobrevive a fechar e reabrir o app.

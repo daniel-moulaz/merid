@@ -5,14 +5,14 @@ import {
   addDaysToCalendarDate,
   daysBetweenCalendarDates,
   formatCalendarDate,
-  isCalendarDate,
+  formatCalendarDateBR,
   type CalendarDate,
 } from "@/lib/time";
 import { control, fontWeight, radius, spacing } from "@/theme/tokens";
 import { useThemeColors } from "@/theme/use-theme";
 
+import { MiniCalendar } from "./mini-calendar";
 import { Text } from "./text";
-import { TextField } from "./text-field";
 
 /**
  * Seleção de DIA.
@@ -67,10 +67,10 @@ export function DateField({
   const scrollRef = useRef<ScrollView>(null);
   const shownDate = useRef<CalendarDate | null>(null);
 
-  /** Data fora da faixa (passado, ou além de duas semanas) exige o campo. */
+  /** Data fora da faixa (passado, ou além de duas semanas) exige o calendário. */
   const offsetFromToday = daysBetweenCalendarDates(today, value);
   const isOutsideStrip = offsetFromToday < 0 || offsetFromToday >= STRIP_DAYS;
-  const [showsExactField, setShowsExactField] = useState(isOutsideStrip);
+  const [showsCalendar, setShowsCalendar] = useState(isOutsideStrip);
 
   function revealSelected(): void {
     if (shownDate.current === value || isOutsideStrip) return;
@@ -115,41 +115,43 @@ export function DateField({
           {capitalizeFirst(
             formatCalendarDate(value, { weekday: "long", day: "numeric", month: "long" }),
           )}
+          {" · "}
+          {formatCalendarDateBR(value)}
         </Text>
 
-        {/* Escape hatch para datas fora da faixa. Recolhido por padrão: é o
-            caminho raro, e aberto o tempo todo pesava a tela. */}
+        {/* Escape para datas fora da faixa. Recolhido por padrão: é o caminho
+            raro, e aberto o tempo todo pesava a tela. Quando a data JÁ está
+            fora da faixa o calendário nasce aberto, porque ali ele não é
+            escape — é o único controle que alcança o valor atual. */}
         {isOutsideStrip ? null : (
           <Pressable
             accessibilityRole="button"
-            accessibilityState={{ expanded: showsExactField }}
-            accessibilityLabel="Escolher outra data"
-            onPress={() => setShowsExactField((shown) => !shown)}
+            accessibilityState={{ expanded: showsCalendar }}
+            accessibilityLabel="Escolher outra data no calendário"
+            onPress={() => setShowsCalendar((shown) => !shown)}
             hitSlop={spacing.sm}
           >
             <Text variant="caption" style={{ color: colors.accent }}>
-              {showsExactField ? "Fechar" : "Outra data"}
+              {showsCalendar ? "Fechar" : "Outra data"}
             </Text>
           </Pressable>
         )}
       </View>
 
-      {showsExactField || isOutsideStrip ? (
-        <TextField
-          label="Data (AAAA-MM-DD)"
+      {showsCalendar || isOutsideStrip ? (
+        <MiniCalendar
           value={value}
-          onChangeText={(text) => {
-            // Só propaga data completa e válida: enquanto o usuário digita, o
-            // valor selecionado continua sendo o último válido.
-            if (isCalendarDate(text)) onChange(text);
-          }}
-          autoCapitalize="none"
-          autoCorrect={false}
-          inputMode="numeric"
-          maxLength={10}
-          error={error}
+          today={today}
+          onChange={onChange}
+          accessibilityLabel={label}
         />
       ) : null}
+
+      {error === undefined || error === "" ? null : (
+        <Text variant="caption" tone="danger">
+          {error}
+        </Text>
+      )}
     </View>
   );
 }

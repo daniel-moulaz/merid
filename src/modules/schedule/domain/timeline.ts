@@ -202,3 +202,28 @@ export function layoutBlocks<T extends Interval & { readonly id: string }>(
 export function offsetToApproximateTimeOfDay(minute: number): TimeOfDay {
   return minutesToTimeOfDay(minute);
 }
+
+/**
+ * O bloco cabe INTEIRO dentro do dia desta janela?
+ *
+ * `layoutBlocks` recorta ao dia visível, então um bloco que atravessa a
+ * meia-noite chega à tela como um pedaço — e um pedaço não é a entidade. Quem
+ * for oferecer um gesto sobre o cartão precisa saber disso ANTES, porque
+ * arrastar meio bloco gravaria o pedaço no lugar do todo e apagaria o resto.
+ *
+ * É o mesmo par de flags que `segmentBlockByDay` produz na grade semanal, aqui
+ * derivado da janela do dia em vez da segmentação — as duas telas alimentam a
+ * mesma decisão (`canDragToMove`) a partir do que cada uma já tem em mãos.
+ *
+ * A comparação é com o DIA (`dayMinutes`), não com a janela visível: uma janela
+ * que não chega às 23:00 não transforma um bloco normal em segmento.
+ */
+export function dayBlockContinuity(
+  block: Interval,
+  window: TimelineWindow,
+): { readonly continuesBefore: boolean; readonly continuesAfter: boolean } {
+  return {
+    continuesBefore: minuteOffsetInWindow(block.startsAt, window) < 0,
+    continuesAfter: minuteOffsetInWindow(block.endsAt, window) > window.dayMinutes,
+  };
+}

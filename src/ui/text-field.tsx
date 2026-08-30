@@ -41,6 +41,9 @@ export function TextField({
         placeholderTextColor={colors.textMuted}
         style={[
           styles.input,
+          // Sem isto, o texto de um campo de várias linhas fica centralizado
+          // verticalmente no Android — o cursor nasce no meio da caixa.
+          rest.multiline === true && styles.multiline,
           {
             color: colors.text,
             backgroundColor: colors.background,
@@ -70,5 +73,6 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     fontSize: fontSize.md,
   },
+  multiline: { minHeight: 96, textAlignVertical: "top" },
   message: { marginTop: 2 },
 });

@@ -11,6 +11,14 @@ export const APP_ERROR_CODES = [
   "NOT_FOUND",
   "UNAUTHORIZED",
   "CONFLICT",
+  /**
+   * O pedido não chegou ao servidor, ou não voltou a tempo.
+   *
+   * É um código próprio porque a UI trata este caso de forma diferente de uma
+   * falha de negócio: aqui vale tentar de novo, e a culpa não é do que a
+   * pessoa digitou.
+   */
+  "NETWORK",
   "UNEXPECTED",
 ] as const;
 
@@ -23,8 +31,15 @@ export class AppError extends Error {
   readonly code: AppErrorCode;
   readonly fieldErrors: FieldErrors | undefined;
 
-  constructor(code: AppErrorCode, message: string, fieldErrors?: FieldErrors) {
-    super(message);
+  constructor(
+    code: AppErrorCode,
+    message: string,
+    fieldErrors?: FieldErrors,
+    // `cause` preserva o erro original para o log sem que ele chegue à tela:
+    // a pessoa lê a mensagem tratada, e quem investiga tem a pilha inteira.
+    options?: ErrorOptions,
+  ) {
+    super(message, options);
     this.name = "AppError";
     this.code = code;
     this.fieldErrors = fieldErrors;

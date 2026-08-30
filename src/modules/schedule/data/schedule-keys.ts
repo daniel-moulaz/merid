@@ -36,6 +36,14 @@ export const scheduleKeys = {
     ["schedule", userId, "blocks", "week", weekStart] as const,
 
   /**
+   * Blocos que intersectam a GRADE do mês — inclusive os dias vizinhos que
+   * fecham a primeira e a última linha. Mesmo prefixo `blocks`, então uma
+   * escrita otimista alcança o mês junto com o dia e a semana.
+   */
+  month: (userId: string, monthStart: CalendarDate) =>
+    ["schedule", userId, "blocks", "month", monthStart] as const,
+
+  /**
    * Ids das tarefas com bloco de hoje em diante — é o complemento da lista de
    * "não agendadas". A chave inclui o dia porque a fronteira é o início de hoje.
    */

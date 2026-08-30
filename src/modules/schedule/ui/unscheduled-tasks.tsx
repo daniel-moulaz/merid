@@ -21,11 +21,20 @@ export function UnscheduledTasks({
   tasks,
   isPending,
   isError,
+  hasAnyTask = true,
   onSchedule,
 }: {
   readonly tasks: readonly Task[];
   readonly isPending: boolean;
   readonly isError: boolean;
+  /**
+   * A conta tem ALGUMA tarefa aberta?
+   *
+   * "Tudo que está aberto já tem horário" é verdade para quem esvaziou a
+   * lista e uma frase sem sentido para quem acabou de criar a conta — e é
+   * justamente essa pessoa que precisa de uma direção na primeira tela.
+   */
+  readonly hasAnyTask?: boolean;
   readonly onSchedule: (task: Task) => void;
 }) {
   if (isPending) return <ActivityIndicator style={styles.state} />;
@@ -41,7 +50,9 @@ export function UnscheduledTasks({
   if (tasks.length === 0) {
     return (
       <Text variant="caption" muted style={styles.state}>
-        Tudo que está aberto já tem horário.
+        {hasAnyTask
+          ? "Tudo que está aberto já tem horário."
+          : "Suas tarefas aparecem aqui quando ainda não têm hora marcada."}
       </Text>
     );
   }

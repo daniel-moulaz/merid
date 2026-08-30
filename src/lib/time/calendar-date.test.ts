@@ -1,4 +1,5 @@
 import {
+  formatCalendarDateBR,
   addDaysToCalendarDate,
   assertCalendarDate,
   calendarDateToUtcDate,
@@ -104,5 +105,27 @@ describe("formatCalendarDate", () => {
   it("formata sem deslocar o dia por timezone", () => {
     expect(formatCalendarDate("2026-08-29")).toBe("29 de ago.");
     expect(formatCalendarDate("2026-01-01", { day: "2-digit", month: "2-digit" })).toBe("01/01");
+  });
+});
+
+describe("formatCalendarDateBR", () => {
+  /**
+   * O formato que a pessoa lê e digita é o do país dela; o domínio, o banco e o
+   * transporte continuam em ISO. Este teste fixa a fronteira entre os dois.
+   */
+  it("formata como DD/MM/AAAA", () => {
+    expect(formatCalendarDateBR("2026-08-30")).toBe("30/08/2026");
+    expect(formatCalendarDateBR("2026-01-05")).toBe("05/01/2026");
+  });
+
+  it("mantém o zero à esquerda no dia e no mês", () => {
+    expect(formatCalendarDateBR("2027-03-07")).toBe("07/03/2027");
+  });
+
+  it("não escorrega um dia por causa do fuso da máquina", () => {
+    // A suíte roda em UTC+14: sem `timeZone: "UTC"` na formatação, o dia 1
+    // apareceria como o último dia do mês anterior.
+    expect(formatCalendarDateBR("2026-08-01")).toBe("01/08/2026");
+    expect(formatCalendarDateBR("2026-12-31")).toBe("31/12/2026");
   });
 });

@@ -59,6 +59,7 @@ export function ScheduleForm({
   initialBlock,
   initialDate,
   initialStartTime,
+  initialEndTime,
   onDone,
   onCancel,
 }: {
@@ -73,6 +74,18 @@ export function ScheduleForm({
    * 14:00 numa tarefa de 90 min já chega com 14:00 → 15:30 preenchido.
    */
   readonly initialStartTime?: TimeOfDay | undefined;
+  /**
+   * Fim escolhido explicitamente — o arrasto na agenda.
+   *
+   * Tem prioridade sobre `estimatedMinutes`: quem desenhou 14:00 → 15:30 disse
+   * quanto tempo quer reservar, e a estimativa da tarefa é só um palpite para
+   * quando ninguém disse nada. Sobrescrever a escolha explícita seria a
+   * ferramenta discordando de uma instrução direta.
+   *
+   * A estimativa da tarefa continua intacta: o bloco reserva 1h30, a tarefa
+   * segue estimada em 30 min, e o formulário avisa quando os dois divergem.
+   */
+  readonly initialEndTime?: TimeOfDay | undefined;
   /** Recebe o dia agendado, para a agenda abrir já nele. */
   readonly onDone: (date: CalendarDate) => void;
   readonly onCancel: () => void;
@@ -84,7 +97,14 @@ export function ScheduleForm({
   const today = todayInTimeZone(timeZone);
 
   const [values, setValues] = useState(() =>
-    initialFormValues(task, initialBlock, timeZone, initialDate ?? today, initialStartTime),
+    initialFormValues(
+      task,
+      initialBlock,
+      timeZone,
+      initialDate ?? today,
+      initialStartTime,
+      initialEndTime,
+    ),
   );
   const [formError, setFormError] = useState<string | null>(null);
   /** Conflitos aguardando decisão do usuário. `null` = nada pendente. */
@@ -343,6 +363,7 @@ function initialFormValues(
   timeZone: string,
   date: CalendarDate,
   suggestedStart?: TimeOfDay | undefined,
+  suggestedEnd?: TimeOfDay | undefined,
 ): FormValues {
   if (block !== undefined) {
     return {
@@ -359,7 +380,8 @@ function initialFormValues(
   return {
     date,
     startTime,
-    endTime: suggestEndTime(startTime, task.estimatedMinutes),
+    // O fim explícito ganha da estimativa. Ver `initialEndTime`.
+    endTime: suggestedEnd ?? suggestEndTime(startTime, task.estimatedMinutes),
   };
 }
 

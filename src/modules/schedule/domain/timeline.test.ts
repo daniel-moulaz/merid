@@ -2,6 +2,7 @@ import { instantFrom } from "@/lib/time";
 
 import {
   buildTimelineWindow,
+  dayBlockContinuity,
   hourMarks,
   layoutBlocks,
   minuteOffsetInWindow,
@@ -336,5 +337,91 @@ describe("layoutBlocks — blocos sobrepostos ganham colunas", () => {
 
   it("lista vazia produz layout vazio", () => {
     expect(layoutBlocks([], window)).toEqual([]);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+
+describe("dayBlockContinuity", () => {
+
+  /**
+   * A regressão que este bloco fixa: a timeline do dia oferecia o gesto de
+   * arrastar para QUALQUER cartão, inclusive o pedaço de um bloco que atravessa
+   * a meia-noite. Como `layoutBlocks` recorta ao dia visível, arrastar esse
+   * pedaço gravava o pedaço no lugar do bloco inteiro — a parte do dia anterior
+   * desaparecia e a duração encolhia, em silêncio.
+   */
+  it("um bloco inteiro dentro do dia não continua para lado nenhum", () => {
+    const window = buildTimelineWindow("2026-03-10", TZ);
+    const block = {
+      id: "a",
+      startsAt: instantFrom("2026-03-10", "14:00", TZ),
+      endsAt: instantFrom("2026-03-10", "15:30", TZ),
+    };
+
+    expect(dayBlockContinuity(block, window)).toEqual({
+      continuesBefore: false,
+      continuesAfter: false,
+    });
+  });
+
+  it("detecta o pedaço que começou no dia anterior", () => {
+    const block = {
+      id: "a",
+      startsAt: instantFrom("2026-03-09", "23:00", TZ),
+      endsAt: instantFrom("2026-03-10", "01:00", TZ),
+    };
+    const window = buildTimelineWindow("2026-03-10", TZ, [block]);
+
+    expect(dayBlockContinuity(block, window)).toEqual({
+      continuesBefore: true,
+      continuesAfter: false,
+    });
+  });
+
+  it("detecta o pedaço que continua no dia seguinte", () => {
+    const block = {
+      id: "a",
+      startsAt: instantFrom("2026-03-09", "23:00", TZ),
+      endsAt: instantFrom("2026-03-10", "01:00", TZ),
+    };
+    const window = buildTimelineWindow("2026-03-09", TZ, [block]);
+
+    expect(dayBlockContinuity(block, window)).toEqual({
+      continuesBefore: false,
+      continuesAfter: true,
+    });
+  });
+
+  it("um bloco que termina exatamente à meia-noite NÃO continua depois", () => {
+    // 24:00 é o fim do dia, não o começo do próximo: recortar aqui não perde
+    // nada, então o gesto continua legítimo.
+    const block = {
+      id: "a",
+      startsAt: instantFrom("2026-03-10", "22:00", TZ),
+      endsAt: instantFrom("2026-03-11", "00:00", TZ),
+    };
+    const window = buildTimelineWindow("2026-03-10", TZ, [block]);
+
+    expect(dayBlockContinuity(block, window)).toEqual({
+      continuesBefore: false,
+      continuesAfter: false,
+    });
+  });
+
+  it("um bloco fora da janela visível, mas dentro do dia, continua arrastável", () => {
+    // A janela padrão começa às 06:00. Um bloco às 03:00 expande a janela; o
+    // que não pode acontecer é ele ser confundido com um segmento partido.
+    const block = {
+      id: "a",
+      startsAt: instantFrom("2026-03-10", "03:00", TZ),
+      endsAt: instantFrom("2026-03-10", "04:00", TZ),
+    };
+    const window = buildTimelineWindow("2026-03-10", TZ, [block]);
+
+    expect(dayBlockContinuity(block, window)).toEqual({
+      continuesBefore: false,
+      continuesAfter: false,
+    });
   });
 });

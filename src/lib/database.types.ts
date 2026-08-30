@@ -118,7 +118,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      daily_activity: {
+        Args: { p_from: string; p_time_zone: string; p_to: string }
+        Returns: {
+          day: string
+          minutes: number
+          tasks: number
+        }[]
+      }
     }
     Enums: {
       task_priority: "LOW" | "MEDIUM" | "HIGH" | "URGENT"

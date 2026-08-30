@@ -1,4 +1,5 @@
 import { Pressable, StyleSheet, View } from "react-native";
+import { GestureDetector, type GestureType } from "react-native-gesture-handler";
 
 import { formatCalendarDate, minutesToTimeOfDay } from "@/lib/time";
 import { fontSize, fontWeight, radius, spacing, timeline } from "@/theme/tokens";
@@ -29,19 +30,29 @@ export function WeekBlockCard({
   windowStartMinute,
   columnWidth,
   onPress,
+  moveGesture,
+  movedTo,
 }: {
   readonly positioned: PositionedSegment;
   readonly windowStartMinute: number;
   readonly columnWidth: number;
   readonly onPress: () => void;
+  /** Arrastar para outro horário. Ausente em segmentos de bloco partido. */
+  readonly moveGesture?: GestureType | undefined;
+  readonly movedTo?: { readonly startMinute: number; readonly endMinute: number } | null;
 }) {
   const colors = useThemeColors();
 
   const { startMinute, endMinute, lane, laneCount, hasConflict, task } = positioned;
   const isDone = task.status === "DONE";
 
-  const top = (startMinute - windowStartMinute) * WEEK.pixelsPerMinute;
-  const height = Math.max((endMinute - startMinute) * WEEK.pixelsPerMinute, WEEK.minBlockHeight);
+  // Durante o arrasto o próprio cartão é o preview — ver `schedule-block-card`.
+  const drawnStart = movedTo?.startMinute ?? startMinute;
+  const drawnEnd = movedTo?.endMinute ?? endMinute;
+  const isMoving = movedTo != null;
+
+  const top = (drawnStart - windowStartMinute) * WEEK.pixelsPerMinute;
+  const height = Math.max((drawnEnd - drawnStart) * WEEK.pixelsPerMinute, WEEK.minBlockHeight);
 
   // Colunas visíveis são limitadas: o excedente é anunciado por um "+N", e não
   // espremido até virar uma tira ilegível. Ver `WeekOverflowChip`.
@@ -50,12 +61,13 @@ export function WeekBlockCard({
 
   const showsRange = height >= WEEK.rangeVisibleHeight && columnWidth >= WEEK.minColumnWidth;
 
-  const range = `${minutesToTimeOfDay(startMinute)} → ${minutesToTimeOfDay(endMinute % 1440)}`;
+  const range = `${minutesToTimeOfDay(drawnStart % 1440)} → ${minutesToTimeOfDay(drawnEnd % 1440)}`;
 
-  return (
+  const card = (
     <View
       style={[
         styles.slot,
+        isMoving && styles.moving,
         { top, height, left: `${lane * widthPercent}%`, width: `${widthPercent}%` },
       ]}
     >
@@ -116,6 +128,8 @@ export function WeekBlockCard({
       </Pressable>
     </View>
   );
+
+  return moveGesture === undefined ? card : <GestureDetector gesture={moveGesture}>{card}</GestureDetector>;
 }
 
 /**
@@ -185,6 +199,7 @@ export function WeekOverflowChip({
 
 const styles = StyleSheet.create({
   slot: { position: "absolute", paddingRight: WEEK.laneGap },
+  moving: { zIndex: 10, opacity: 0.92 },
   card: {
     flex: 1,
     flexDirection: "row",
@@ -205,7 +220,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   title: { fontSize: fontSize.xs, fontWeight: fontWeight.semibold },
-  range: { opacity: 0.85, fontSize: 10 },
+  range: { opacity: 0.85, fontSize: fontSize.xxs },
   done: { textDecorationLine: "line-through" },
 
   overflowSlot: { right: 0, height: 18 },
@@ -220,5 +235,5 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: 3,
   },
-  overflowLabel: { fontSize: 10, fontWeight: fontWeight.semibold },
+  overflowLabel: { fontSize: fontSize.xxs, fontWeight: fontWeight.semibold },
 });

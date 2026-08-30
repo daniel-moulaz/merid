@@ -9,6 +9,12 @@ web-build/
 expo-env.d.ts
 .metro-health-check*
 
+# artefatos de build do aplicativo (EAS / local)
+*.apk
+*.aab
+*.ipa
+.eas/
+
 # nativo
 .kotlin/
 *.orig.*

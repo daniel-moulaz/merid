@@ -43,6 +43,8 @@ import {
  *
  * Uma consulta só, com a tarefa embutida — sem N+1.
  */
+const BLOCKS_IN_RANGE_LIMIT = 500;
+
 export async function fetchBlocksInRange(range: InstantRange): Promise<ScheduleBlockWithTask[]> {
   const rows = unwrap(
     await supabase
@@ -50,7 +52,10 @@ export async function fetchBlocksInRange(range: InstantRange): Promise<ScheduleB
       .select(SCHEDULE_BLOCK_WITH_TASK_COLUMNS)
       .lt("starts_at", range.endExclusive.toISOString())
       .gt("ends_at", range.start.toISOString())
-      .order("starts_at", { ascending: true }),
+      .order("starts_at", { ascending: true })
+      // Teto explícito pela mesma razão de `fetchOpenTasks`: o corte do
+      // PostgREST é silencioso. Uma semana com 500 blocos não existe.
+      .limit(BLOCKS_IN_RANGE_LIMIT),
   );
 
   return rows.map(rowToScheduleBlockWithTask);

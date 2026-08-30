@@ -9,7 +9,7 @@ export default function SignInScreen() {
     <AuthForm
       mode="signIn"
       title="Entrar"
-      subtitle="Suas tarefas, com duração e prazo."
+      subtitle="Dê direção ao seu tempo."
       submitLabel="Entrar"
       onSubmit={async ({ email, password }) => {
         await signIn({ email, password });

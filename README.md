@@ -2,8 +2,6 @@
 
 > Dê direção ao seu tempo.
 
-> Nome provisório — o código não depende dele.
-
 Aplicativo universal (**Android · iOS · Web**) que une **tarefas** e **agenda**,
 mantendo as duas coisas separadas:
 
@@ -31,22 +29,40 @@ e-mail desligada, então o cadastro já entra direto.
 > **Dispositivo físico:** `127.0.0.1` aponta para o próprio aparelho. Troque
 > `EXPO_PUBLIC_SUPABASE_URL` no `.env` pelo IP da sua máquina na rede local.
 
-## Estado atual
+## Estado atual — pilot candidate
 
-**Conta e Inbox.** Criar conta, entrar, sair, sessão que sobrevive a fechar o
-app, e CRUD completo de tarefas (criar, editar, concluir, reabrir, excluir) com
-duração obrigatória, prazo e prioridade.
+Este é o escopo **congelado** para o primeiro piloto, validado em Android
+físico.
 
-**Agenda (Etapa 2).** Agendar uma tarefa em um intervalo, ver o dia em uma
-timeline vertical, editar/reagendar, remover da agenda sem apagar a tarefa e
-concluir a tarefa direto pelo bloco. Conflito de horário é detectado e avisado —
-nunca bloqueado, porque sobreposição pode ser intencional.
+**Conta.** Criar conta, entrar, sair, sessão que sobrevive a fechar o app.
+Fuso horário do perfil editável — é ele, e nunca o relógio do aparelho, que
+decide o que conta como "hoje".
+
+**Inbox.** Captura rápida (título + Enter), CRUD completo, duração obrigatória,
+prioridade, prazo e notas. A lista é agrupada por prazo — atrasadas, hoje,
+amanhã, próximos dias, mais adiante, sem prazo.
+
+**Agenda.** Três zooms da mesma agenda: **Hoje** (timeline do dia), **Semana**
+(grade de 7 colunas) e **Mês** (densidade). Tocar um horário cria; segurar e
+arrastar seleciona um intervalo; segurar um bloco e arrastar o reagenda, com
+desfazer. Conflito é detectado e avisado — nunca bloqueado, porque sobreposição
+pode ser intencional.
+
+**Progresso.** Sequência atual, melhor sequência e heatmap de conclusões,
+agregados no banco por dia civil do usuário.
+
+**Datas.** Interface toda em `DD/MM/AAAA`, com mini calendário para escolher o
+dia. O domínio e o banco continuam em ISO.
 
 Cada usuário só enxerga os próprios dados — garantido por RLS no Postgres, com
 testes que provam isso. Um bloco não consegue nem apontar para tarefa de outro
 usuário: uma FK composta `(task_id, user_id)` torna isso impossível no banco.
 
-Próximo (Etapa 3): consistência, streak e heatmap.
+### Conscientemente fora do piloto
+
+Arrastar entre dias, redimensionar bloco por gesto, recorrência, notificações,
+subtarefas, comentários, projetos/workspaces, sincronização com outros
+calendários, IA e colaboração. Nenhum deles está pela metade — nenhum começou.
 
 ### Problema conhecido do ambiente local
 

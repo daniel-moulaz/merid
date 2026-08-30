@@ -1,11 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
   View,
-  type GestureResponderEvent,
   type LayoutChangeEvent,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
@@ -17,6 +16,7 @@ import {
   minutesToTimeOfDay,
   timeOfDayInTimeZone,
   timeOfDayToMinutes,
+  toCalendarDateInTimeZone,
   type CalendarDate,
   type TimeOfDay,
 } from "@/lib/time";
@@ -24,6 +24,10 @@ import { control, fontSize, radius, spacing, timeline } from "@/theme/tokens";
 import { useThemeColors } from "@/theme/use-theme";
 import { Text } from "@/ui/text";
 
+import {
+  SCHEDULE_SNAP_MINUTES,
+  type IntervalSelection,
+} from "../domain/interval-selection";
 import { packIntoLanes } from "../domain/lane-packing";
 import type { ScheduleBlockWithTask } from "../domain/schedule-block";
 import {
@@ -33,41 +37,23 @@ import {
   weekDays,
   weekHourMarks,
 } from "../domain/week";
+import { canDragToMove } from "../domain/move-block";
+import { IntervalSelectionSurface } from "./interval-selection-surface";
+import { useBlockMove } from "./use-block-move";
+import { pressOffsetY } from "./press-position";
+import { SelectionPreview } from "./selection-preview";
+import { useIntervalSelection } from "./use-interval-selection";
 import { WeekBlockCard, WeekOverflowChip, type PositionedSegment } from "./week-block-card";
 
 const WEEK = timeline.week;
 
 /** Granularidade ao tocar um vazio: ninguém planeja para as 14:07. */
-const SLOT_STEP_MINUTES = 15;
+const SLOT_STEP_MINUTES = SCHEDULE_SNAP_MINUTES;
 
-/**
- * Onde, DENTRO da coluna, o toque caiu — ou `null` quando não houve toque.
- *
- * Cada plataforma nomeia isso de um jeito, e a diferença é real, não cosmética:
- * no nativo o evento vem do responder de toque e traz `locationY`; na web o
- * `onPress` do react-native-web nasce de um `click` do DOM, cujo `nativeEvent`
- * é um `MouseEvent` — ele tem `offsetY` e NÃO tem `locationY`. Ler só
- * `locationY` dava `undefined` na web e um `NaN` silencioso na conta seguinte.
- *
- * E quando a coluna é ativada pelo TECLADO (foco + Enter) não existe posição
- * nenhuma. Daí o `null` explícito em vez de um número inventado.
- *
- * A leitura é feita por chave e validada em tempo de execução porque os tipos
- * do React Native descrevem o evento nativo, não o do DOM: o campo existe na
- * web, mas não no tipo. Nada aqui silencia erro — o valor só é aceito se for
- * mesmo um número finito.
- *
- * `Reflect.get` e não desestruturação: em um `MouseEvent` do DOM, `offsetY` é
- * um getter do PROTÓTIPO, e qualquer cópia por espalhamento o perderia.
- */
-function pressOffsetY(event: GestureResponderEvent): number | null {
-  for (const key of ["locationY", "offsetY"]) {
-    const value: unknown = Reflect.get(event.nativeEvent, key);
-    if (typeof value === "number" && Number.isFinite(value)) return value;
-  }
+const MINUTES_IN_DAY = 1440;
+/** Abaixo desta largura só a duração cabe dentro do preview. */
+const COMPACT_PREVIEW_WIDTH = 110;
 
-  return null;
-}
 
 /**
  * A grade semanal — uma composição só para telefone e desktop.
@@ -94,6 +80,8 @@ export function WeekGrid({
   entries,
   onSelectBlock,
   onSelectSlot,
+  onSelectRange,
+  onMoveBlock,
   onOpenDay,
   isRefreshing = false,
   onRefresh,
@@ -104,6 +92,15 @@ export function WeekGrid({
   readonly entries: readonly ScheduleBlockWithTask[];
   readonly onSelectBlock: (entry: ScheduleBlockWithTask) => void;
   readonly onSelectSlot: (date: CalendarDate, startTime: TimeOfDay | undefined) => void;
+  /** Fim do arrasto: intervalo explícito escolhido pela pessoa. */
+  readonly onSelectRange: (date: CalendarDate, start: TimeOfDay, end: TimeOfDay) => void;
+  /** Fim de um arrasto de bloco: mesmo dia, mesma duração, outro horário. */
+  readonly onMoveBlock: (
+    entry: ScheduleBlockWithTask,
+    date: CalendarDate,
+    start: TimeOfDay,
+    end: TimeOfDay,
+  ) => void;
   readonly onOpenDay: (date: CalendarDate) => void;
   readonly isRefreshing?: boolean;
   readonly onRefresh?: (() => void) | undefined;
@@ -219,6 +216,89 @@ export function WeekGrid({
     onSelectSlot(date, minutesToTimeOfDay(clamped));
   }
 
+  /**
+   * Arrastar para escolher início e fim.
+   *
+   * A geometria é a mesma da grade: a janela visível é o limite, e o passo do
+   * snap vive no domínio. Nada aqui recalcula minutos por conta própria.
+   */
+  const selectionGeometry = useMemo(
+    () => ({
+      windowStartMinute: window.startMinute,
+      pixelsPerMinute: WEEK.pixelsPerMinute,
+      bounds: { minMinute: window.startMinute, maxMinute: window.endMinute },
+    }),
+    [window.startMinute, window.endMinute],
+  );
+
+  const commitRange = useCallback(
+    (date: CalendarDate, selection: IntervalSelection) => {
+      onSelectRange(
+        date,
+        minutesToTimeOfDay(selection.startMinute),
+        minutesToTimeOfDay(selection.endMinute % MINUTES_IN_DAY),
+      );
+    },
+    [onSelectRange],
+  );
+
+  const { selection, onStart, onMove, onFinish, cancel } = useIntervalSelection({
+    geometry: selectionGeometry,
+    onCommit: commitRange,
+  });
+
+  const commitMove = useCallback(
+    (blockId: string, startMinute: number, endMinute: number) => {
+      const entry = blocksById.get(blockId);
+      if (entry === undefined) return;
+
+      // O dia vem do SEGMENTO, não do bloco: é a coluna em que o arrasto
+      // aconteceu. Como o gesto não troca de coluna, é sempre a mesma.
+      const date = toCalendarDateInTimeZone(entry.block.startsAt, timeZone);
+
+      onMoveBlock(
+        entry,
+        date,
+        minutesToTimeOfDay(startMinute % MINUTES_IN_DAY),
+        minutesToTimeOfDay(endMinute % MINUTES_IN_DAY),
+      );
+    },
+    [blocksById, onMoveBlock, timeZone],
+  );
+
+  const move = useBlockMove({
+    geometry: {
+      pixelsPerMinute: WEEK.pixelsPerMinute,
+      bounds: { minMinute: window.startMinute, maxMinute: window.endMinute },
+    },
+    onCommit: commitMove,
+  });
+
+  /**
+   * Início do gesto: descobre a coluna e recusa se ali já existe bloco.
+   *
+   * Recusar é uma consulta aos dados que a grade já tem, e não uma disputa
+   * entre reconhecedores de gesto — por isso o resultado é sempre o mesmo,
+   * independentemente da ordem em que os eventos chegarem.
+   */
+  const beginSelection = useCallback(
+    (x: number, y: number): boolean => {
+      const index = Math.floor(x / columnWidth);
+      const date = days[index];
+      if (date === undefined) return false;
+
+      const minute = window.startMinute + y / WEEK.pixelsPerMinute;
+      const occupied = (positionedByDay.get(date) ?? []).some(
+        (segment) => minute >= segment.startMinute && minute < segment.endMinute,
+      );
+      if (occupied) return false;
+
+      onStart(date, y);
+      return true;
+    },
+    [columnWidth, days, onStart, positionedByDay, window.startMinute],
+  );
+
   return (
     <View style={styles.container} onLayout={handleLayout}>
       <View style={[styles.headerRow, { borderBottomColor: colors.border }]}>
@@ -289,7 +369,6 @@ export function WeekGrid({
               {marks.map((minute) => (
                 <View
                   key={minute}
-                  pointerEvents="none"
                   style={[
                     styles.hourLine,
                     {
@@ -300,7 +379,13 @@ export function WeekGrid({
                 />
               ))}
 
-              <View style={styles.columns}>
+              <IntervalSelectionSurface
+                style={styles.columns}
+                onStart={beginSelection}
+                onMove={(_x, y) => onMove(y)}
+                onFinish={onFinish}
+                onCancel={cancel}
+              >
                 {days.map((date) => (
                   <DayColumn
                     key={date}
@@ -310,6 +395,8 @@ export function WeekGrid({
                     width={columnWidth}
                     window={window}
                     positioned={positionedByDay.get(date) ?? []}
+                    selection={selection?.date === date ? selection.selection : null}
+                    move={move}
                     onSelectBlock={(blockId) => {
                       const entry = blocksById.get(blockId);
                       if (entry !== undefined) onSelectBlock(entry);
@@ -318,7 +405,7 @@ export function WeekGrid({
                     onOpenDay={() => onOpenDay(date)}
                   />
                 ))}
-              </View>
+              </IntervalSelectionSurface>
             </View>
           </ScrollView>
         </View>
@@ -388,6 +475,8 @@ function DayColumn({
   width,
   window,
   positioned,
+  selection,
+  move,
   onSelectBlock,
   onPressEmpty,
   onOpenDay,
@@ -398,6 +487,10 @@ function DayColumn({
   readonly width: number;
   readonly window: { readonly startMinute: number; readonly endMinute: number };
   readonly positioned: readonly PositionedSegment[];
+  /** Intervalo sendo arrastado nesta coluna, se houver. */
+  readonly selection: IntervalSelection | null;
+  /** Controlador de arrasto de bloco, compartilhado por todas as colunas. */
+  readonly move: ReturnType<typeof useBlockMove>;
   readonly onSelectBlock: (blockId: string) => void;
   readonly onPressEmpty: (offsetY: number | null) => void;
   readonly onOpenDay: () => void;
@@ -414,7 +507,7 @@ function DayColumn({
         {
           width,
           borderRightColor: colors.border,
-          backgroundColor: isToday ? colors.surface : "transparent",
+          backgroundColor: isToday ? colors.todayTint : "transparent",
         },
       ]}
     >
@@ -423,9 +516,23 @@ function DayColumn({
         accessibilityRole="button"
         accessibilityLabel={`Agendar em ${formatCalendarDate(date, { weekday: "long", day: "numeric", month: "long" })}`}
         accessibilityHint="Escolhe o horário tocado e abre a seleção de tarefa"
+        // Ver a nota equivalente em `day-timeline.tsx`: terminar uma seleção
+        // não pode valer também como toque simples.
+        disabled={selection !== null}
         onPress={(event) => onPressEmpty(pressOffsetY(event))}
         style={StyleSheet.absoluteFill}
       />
+
+      {/* Acima do fundo e ABAIXO dos blocos: o preview mostra onde o
+          intervalo vai cair sem esconder o que já está agendado ali. */}
+      {selection === null ? null : (
+        <SelectionPreview
+          selection={selection}
+          windowStartMinute={window.startMinute}
+          pixelsPerMinute={WEEK.pixelsPerMinute}
+          compact={width < COMPACT_PREVIEW_WIDTH}
+        />
+      )}
 
       {visible.map((segment) => (
         <WeekBlockCard
@@ -434,6 +541,18 @@ function DayColumn({
           windowStartMinute={window.startMinute}
           columnWidth={width}
           onPress={() => onSelectBlock(segment.blockId)}
+          // Um bloco partido pela meia-noite não é arrastável: o segmento não
+          // é a entidade. Ver `canDragToMove`.
+          moveGesture={
+            canDragToMove(segment)
+              ? move.gestureFor(
+                  segment.blockId,
+                  { startMinute: segment.startMinute, endMinute: segment.endMinute },
+                  true,
+                )
+              : undefined
+          }
+          movedTo={move.offsetFor(segment.blockId)}
         />
       ))}
 
@@ -478,7 +597,6 @@ function NowLine({
 
   return (
     <View
-      pointerEvents="none"
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
       style={[
@@ -508,7 +626,7 @@ const styles = StyleSheet.create({
     gap: 1,
     paddingVertical: spacing.xs,
   },
-  weekday: { textTransform: "uppercase", fontSize: 10, letterSpacing: 0.4 },
+  weekday: { textTransform: "uppercase", fontSize: fontSize.xxs, letterSpacing: 0.4 },
   dayNumber: {
     minWidth: 26,
     height: 26,
@@ -517,7 +635,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: spacing.xs,
   },
-  load: { fontSize: 10 },
+  load: { fontSize: fontSize.xxs },
 
   vertical: { flex: 1 },
   verticalContent: { paddingTop: spacing.sm, paddingBottom: spacing.xxl },
@@ -533,6 +651,7 @@ const styles = StyleSheet.create({
     transform: [{ translateY: -7 }],
   },
   hourLine: {
+    pointerEvents: "none",
     position: "absolute",
     left: 0,
     right: 0,
@@ -542,7 +661,7 @@ const styles = StyleSheet.create({
   columns: { flexDirection: "row", flex: 1 },
   column: { height: "100%", borderRightWidth: StyleSheet.hairlineWidth },
 
-  now: { position: "absolute", left: 0, right: 0, height: 1.5 },
+  now: { pointerEvents: "none", position: "absolute", left: 0, right: 0, height: 1.5 },
 });
 
 export const WEEK_MIN_COLUMN_WIDTH = WEEK.minColumnWidth;

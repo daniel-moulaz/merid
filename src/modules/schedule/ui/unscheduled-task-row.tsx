@@ -25,6 +25,7 @@ export function UnscheduledTaskRow({
 }) {
   const colors = useThemeColors();
   const completion = useSetTaskCompletion();
+  const isFlagged = task.priority === "HIGH" || task.priority === "URGENT";
 
   return (
     <View style={[styles.row, { borderBottomColor: colors.border }]}>
@@ -50,13 +51,18 @@ export function UnscheduledTaskRow({
 
       <View style={styles.body}>
         <View style={styles.titleRow}>
+          {/* Mesma regra da linha da Inbox: só o que é excepcional ganha cor.
+              Antes toda tarefa exibia um ponto, e um ponto que sempre aparece
+              deixa de significar alguma coisa. */}
+          {isFlagged ? (
+            <View
+              accessibilityLabel={`Prioridade ${TASK_PRIORITY_LABEL[task.priority].toLowerCase()}`}
+              style={[styles.flag, { backgroundColor: priorityColor(task.priority, colors) }]}
+            />
+          ) : null}
           <Text numberOfLines={2} style={styles.title}>
             {task.title}
           </Text>
-          <View
-            accessibilityLabel={`Prioridade ${TASK_PRIORITY_LABEL[task.priority].toLowerCase()}`}
-            style={[styles.priorityDot, { backgroundColor: priorityColor(task.priority, colors) }]}
-          />
         </View>
         <Text variant="caption" muted>
           {formatMinutes(task.estimatedMinutes)}
@@ -66,9 +72,9 @@ export function UnscheduledTaskRow({
       <Button
         label="Agendar"
         variant="secondary"
+        size="sm"
         accessibilityLabel={`Agendar ${task.title}`}
         onPress={() => onSchedule(task)}
-        style={styles.action}
       />
     </View>
   );
@@ -99,6 +105,5 @@ const styles = StyleSheet.create({
   body: { flex: 1, gap: 2, paddingVertical: spacing.sm },
   titleRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   title: { flexShrink: 1 },
-  priorityDot: { width: 7, height: 7, borderRadius: radius.pill },
-  action: { minHeight: control.chipHeight, paddingHorizontal: spacing.md },
+  flag: { width: 3, height: 14, borderRadius: radius.xs },
 });

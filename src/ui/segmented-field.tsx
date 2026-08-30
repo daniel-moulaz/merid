@@ -14,11 +14,20 @@ import { Text } from "./text";
  */
 export function SegmentedField<TValue extends string>({
   label,
+  hideLabel = false,
   options,
   value,
   onChange,
 }: {
   readonly label: string;
+  /**
+   * Esconde o rótulo visualmente, mantendo-o para leitores de tela.
+   *
+   * É o que permite reaproveitar o mesmo controle como seletor de visão da
+   * agenda ("Semana | Mês"), onde o rótulo é óbvio pelo contexto e uma linha
+   * de texto acima só roubaria altura da grade.
+   */
+  readonly hideLabel?: boolean;
   readonly options: readonly { readonly value: TValue; readonly label: string }[];
   readonly value: TValue;
   readonly onChange: (value: TValue) => void;
@@ -27,9 +36,11 @@ export function SegmentedField<TValue extends string>({
 
   return (
     <View style={styles.container}>
-      <Text variant="label" muted>
-        {label}
-      </Text>
+      {hideLabel ? null : (
+        <Text variant="label" muted>
+          {label}
+        </Text>
+      )}
 
       <View
         accessibilityRole="radiogroup"
@@ -50,7 +61,7 @@ export function SegmentedField<TValue extends string>({
                 isSelected && { backgroundColor: colors.background, borderColor: colors.borderStrong },
               ]}
             >
-              <Text variant="caption" muted={!isSelected}>
+              <Text variant="label" muted={!isSelected}>
                 {option.label}
               </Text>
             </Pressable>

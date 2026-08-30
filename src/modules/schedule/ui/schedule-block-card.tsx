@@ -1,6 +1,7 @@
 import { Pressable, StyleSheet, View } from "react-native";
+import { GestureDetector, type GestureType } from "react-native-gesture-handler";
 
-import { formatMinutes, formatTimeRangeInTimeZone } from "@/lib/time";
+import { formatMinutes, formatTimeRangeInTimeZone, minutesToTimeOfDay } from "@/lib/time";
 import { fontSize, fontWeight, radius, spacing, timeline } from "@/theme/tokens";
 import { useThemeColors } from "@/theme/use-theme";
 import { Text } from "@/ui/text";
@@ -24,11 +25,17 @@ export function ScheduleBlockCard({
   timeZone,
   windowStartMinute,
   onPress,
+  moveGesture,
+  movedTo,
 }: {
   readonly positioned: PositionedBlock<ScheduleBlockWithTask & { readonly id: string }>;
   readonly timeZone: string;
   readonly windowStartMinute: number;
   readonly onPress: () => void;
+  /** Gesto de arrastar para outro horário, quando o bloco permite. */
+  readonly moveGesture?: GestureType | undefined;
+  /** Horário provisório enquanto o dedo arrasta. `null` = parado. */
+  readonly movedTo?: { readonly startMinute: number; readonly endMinute: number } | null;
 }) {
   const colors = useThemeColors();
 
@@ -36,9 +43,15 @@ export function ScheduleBlockCard({
   const { block, task } = item;
   const isDone = task.status === "DONE";
 
-  const top = (startMinute - windowStartMinute) * timeline.day.pixelsPerMinute;
+  // Durante o arrasto o cartão se desenha no horário provisório: ele PRÓPRIO é
+  // o preview, o que evita um segundo retângulo competindo com o original.
+  const drawnStart = movedTo?.startMinute ?? startMinute;
+  const drawnEnd = movedTo?.endMinute ?? endMinute;
+  const isMoving = movedTo != null;
+
+  const top = (drawnStart - windowStartMinute) * timeline.day.pixelsPerMinute;
   const height = Math.max(
-    (endMinute - startMinute) * timeline.day.pixelsPerMinute,
+    (drawnEnd - drawnStart) * timeline.day.pixelsPerMinute,
     timeline.day.minBlockHeight,
   );
 
@@ -47,12 +60,17 @@ export function ScheduleBlockCard({
   const widthPercent = 100 / laneCount;
 
   const durationMinutes = blockDurationMinutes(block);
-  const range = formatTimeRangeInTimeZone(block.startsAt, block.endsAt, timeZone);
+  // Enquanto arrasta, o cartão anuncia o horário PROVISÓRIO — ler o antigo
+  // enquanto o bloco já está em outro lugar seria a tela contradizendo o dedo.
+  const range = isMoving
+    ? `${minutesToTimeOfDay(drawnStart % MINUTES_IN_DAY)} → ${minutesToTimeOfDay(drawnEnd % MINUTES_IN_DAY)}`
+    : formatTimeRangeInTimeZone(block.startsAt, block.endsAt, timeZone);
 
-  return (
+  const card = (
     <View
       style={[
         styles.slot,
+        isMoving && styles.moving,
         {
           top,
           height,
@@ -115,10 +133,19 @@ export function ScheduleBlockCard({
       </Pressable>
     </View>
   );
+
+  // Sem gesto (bloco que atravessa a meia-noite, ou plataforma sem toque) o
+  // cartão é exatamente o que sempre foi.
+  return moveGesture === undefined ? card : <GestureDetector gesture={moveGesture}>{card}</GestureDetector>;
 }
+
+const MINUTES_IN_DAY = 1440;
 
 const styles = StyleSheet.create({
   slot: { position: "absolute", paddingRight: timeline.day.laneGap },
+  // Enquanto arrasta, o cartão sobe acima dos vizinhos e ganha um leve relevo:
+  // é a única pista de que ele está "na mão" e ainda não foi salvo.
+  moving: { zIndex: 10, opacity: 0.92 },
   card: {
     flex: 1,
     flexDirection: "row",

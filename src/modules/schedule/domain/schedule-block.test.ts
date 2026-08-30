@@ -1,4 +1,9 @@
-import { instantFrom, timeOfDayInTimeZone, toCalendarDateInTimeZone } from "@/lib/time";
+import {
+  instantFrom,
+  minutesBetween,
+  timeOfDayInTimeZone,
+  toCalendarDateInTimeZone,
+} from "@/lib/time";
 import type { Task } from "@/modules/tasks/domain/task";
 
 import {
@@ -183,5 +188,59 @@ describe("tarefas não agendadas", () => {
     const tasks = [makeTask({ id: "1" }), makeTask({ id: "2" }), makeTask({ id: "3" })];
 
     expect(selectUnscheduledTasks(tasks, new Set(["2"])).map((t) => t.id)).toEqual(["1", "3"]);
+  });
+});
+
+describe("resolveBlockInstants — meia-noite em dia de horário de verão", () => {
+  /**
+   * A regressão: o fim que cai no dia seguinte era calculado somando 24 h em
+   * milissegundos. Em dia de transição o dia civil tem 23 ou 25 horas, e o
+   * bloco terminava uma hora fora do lugar — em silêncio.
+   *
+   * `Europe/Lisbon` adianta o relógio em 29/03/2026 às 01:00 (o dia tem 23 h) e
+   * atrasa em 25/10/2026 às 02:00 (o dia tem 25 h).
+   */
+  const LISBON = "Europe/Lisbon";
+
+  it("o fim é o horário civil do dia seguinte, e não início + 24 h", () => {
+    // 28/03 23:00 → 29/03 02:00. Entre os dois o relógio pula 01:00 → 02:00,
+    // então o intervalo REAL é de 2 h, não de 3 h.
+    const { startsAt, endsAt } = resolveBlockInstants(
+      { date: "2026-03-28", startTime: "23:00", endTime: "02:00" },
+      LISBON,
+    );
+
+    expect(startsAt.toISOString()).toBe("2026-03-28T23:00:00.000Z");
+    expect(endsAt.toISOString()).toBe("2026-03-29T01:00:00.000Z");
+    expect(minutesBetween(startsAt, endsAt)).toBe(120);
+  });
+
+  it("no dia que ganha uma hora, o intervalo real também cresce", () => {
+    // 24/10 23:00 → 25/10 02:00, com o relógio voltando 02:00 → 01:00.
+    const { startsAt, endsAt } = resolveBlockInstants(
+      { date: "2026-10-24", startTime: "23:00", endTime: "02:00" },
+      LISBON,
+    );
+
+    expect(minutesBetween(startsAt, endsAt)).toBe(240);
+  });
+
+  it("o fim continua sendo o horário pedido, lido no fuso do usuário", () => {
+    const { endsAt } = resolveBlockInstants(
+      { date: "2026-03-28", startTime: "23:00", endTime: "02:00" },
+      LISBON,
+    );
+
+    expect(timeOfDayInTimeZone(endsAt, LISBON)).toBe("02:00");
+  });
+
+  it("fora de transição, atravessar a meia-noite continua dando 24 h de volta", () => {
+    const { startsAt, endsAt } = resolveBlockInstants(
+      { date: DATE, startTime: "23:00", endTime: "01:00" },
+      TZ,
+    );
+
+    expect(minutesBetween(startsAt, endsAt)).toBe(120);
+    expect(endsAt.toISOString()).toBe("2026-08-30T04:00:00.000Z");
   });
 });

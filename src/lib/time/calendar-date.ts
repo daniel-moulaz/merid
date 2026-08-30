@@ -121,3 +121,23 @@ export function formatCalendarDate(
     timeZone: "UTC",
   }).format(calendarDateToUtcDate(value));
 }
+
+/**
+ * Data por extenso no padrão brasileiro: "30/08/2026".
+ *
+ * O domínio, o banco e o transporte continuam em ISO (`AAAA-MM-DD`) — é o que
+ * torna `CalendarDate` comparável como string e ordenável sem conversão. Este
+ * helper existe para a fronteira oposta: TUDO o que a pessoa lê ou digita usa
+ * o formato do país dela.
+ *
+ * Ter uma função nomeada, em vez de espalhar `{ day, month, year }` pelas
+ * telas, é o que garante que o formato seja o mesmo em todo lugar — e que
+ * mudá-lo um dia seja uma edição só.
+ */
+export function formatCalendarDateBR(value: CalendarDate): string {
+  return formatCalendarDate(value, {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+}

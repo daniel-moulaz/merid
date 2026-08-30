@@ -28,6 +28,17 @@ import {
  * real são as CHECK constraints do banco.
  */
 
+/**
+ * Teto explícito da Inbox.
+ *
+ * O PostgREST corta a resposta em `max_rows` (1000 nesta instalação) e o corte é
+ * SILENCIOSO — a lista simplesmente vem menor, sem erro. Declarar o limite aqui
+ * não muda o comportamento no volume de uma agenda pessoal; muda o fato de o
+ * teto passar a estar escrito no código que o sofre, em vez de morar num arquivo
+ * de configuração do servidor. Mesma razão da nota em `daily_activity`.
+ */
+const OPEN_TASKS_LIMIT = 500;
+
 /** Tarefas abertas, mais importantes primeiro. */
 export async function fetchOpenTasks(): Promise<Task[]> {
   const rows = unwrap(
@@ -38,7 +49,8 @@ export async function fetchOpenTasks(): Promise<Task[]> {
       // A ordem do enum no Postgres é LOW < MEDIUM < HIGH < URGENT.
       .order("priority", { ascending: false })
       .order("due_date", { ascending: true, nullsFirst: false })
-      .order("created_at", { ascending: true }),
+      .order("created_at", { ascending: true })
+      .limit(OPEN_TASKS_LIMIT),
   );
 
   return rows.map(rowToTask);

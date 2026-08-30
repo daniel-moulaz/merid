@@ -1,4 +1,5 @@
 import {
+  addDaysToCalendarDate,
   addMinutesToTimeOfDay,
   instantFrom,
   minutesBetween,
@@ -82,9 +83,22 @@ export function resolveBlockInstants(
     return { startsAt, endsAt: sameDayEnd };
   }
 
-  // Atravessa a meia-noite: o mesmo horário civil, um dia depois.
-  const MS_PER_DAY = 86_400_000;
-  return { startsAt, endsAt: new Date(sameDayEnd.getTime() + MS_PER_DAY) };
+  // Atravessa a meia-noite: o mesmo horário civil, no DIA SEGUINTE.
+  //
+  // O dia seguinte é obtido no calendário (`addDaysToCalendarDate`) e depois
+  // resolvido no fuso, e não somando 24 h em milissegundos. Em dia de transição
+  // de horário de verão o dia civil tem 23 ou 25 horas, e a soma fixa punha o
+  // fim uma hora fora do lugar — um bloco 23:00 → 01:00 virava 23:00 → 00:00 ou
+  // → 02:00, sem nada indicando. É a mesma regra que `segmentBlockByDay` já
+  // seguia na grade semanal.
+  return {
+    startsAt,
+    endsAt: instantFrom(
+      addDaysToCalendarDate(values.date, 1),
+      values.endTime,
+      timeZone,
+    ),
+  };
 }
 
 /**
