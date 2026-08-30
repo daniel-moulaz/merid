@@ -58,6 +58,7 @@ export function ScheduleForm({
   timeZone,
   initialBlock,
   initialDate,
+  initialStartTime,
   onDone,
   onCancel,
 }: {
@@ -66,6 +67,12 @@ export function ScheduleForm({
   readonly initialBlock?: ScheduleBlock | undefined;
   /** Dia sugerido — o que estava sendo visto na agenda. Padrão: hoje. */
   readonly initialDate?: CalendarDate | undefined;
+  /**
+   * Início sugerido — a faixa tocada na grade semanal. Padrão: o próximo passo
+   * do relógio. O fim continua vindo da estimativa da tarefa, então tocar as
+   * 14:00 numa tarefa de 90 min já chega com 14:00 → 15:30 preenchido.
+   */
+  readonly initialStartTime?: TimeOfDay | undefined;
   /** Recebe o dia agendado, para a agenda abrir já nele. */
   readonly onDone: (date: CalendarDate) => void;
   readonly onCancel: () => void;
@@ -77,7 +84,7 @@ export function ScheduleForm({
   const today = todayInTimeZone(timeZone);
 
   const [values, setValues] = useState(() =>
-    initialFormValues(task, initialBlock, timeZone, initialDate ?? today),
+    initialFormValues(task, initialBlock, timeZone, initialDate ?? today, initialStartTime),
   );
   const [formError, setFormError] = useState<string | null>(null);
   /** Conflitos aguardando decisão do usuário. `null` = nada pendente. */
@@ -335,6 +342,7 @@ function initialFormValues(
   block: ScheduleBlock | undefined,
   timeZone: string,
   date: CalendarDate,
+  suggestedStart?: TimeOfDay | undefined,
 ): FormValues {
   if (block !== undefined) {
     return {
@@ -344,10 +352,9 @@ function initialFormValues(
     };
   }
 
-  const startTime = ceilTimeOfDayToStep(
-    timeOfDayInTimeZone(new Date(), timeZone),
-    TIME_STEP_MINUTES,
-  );
+  const startTime =
+    suggestedStart ??
+    ceilTimeOfDayToStep(timeOfDayInTimeZone(new Date(), timeZone), TIME_STEP_MINUTES);
 
   return {
     date,

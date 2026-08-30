@@ -5,6 +5,7 @@ import {
   ScrollView,
   StyleSheet,
   View,
+  type GestureResponderEvent,
   type LayoutChangeEvent,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
@@ -19,7 +20,7 @@ import {
   type CalendarDate,
   type TimeOfDay,
 } from "@/lib/time";
-import { control, fontSize, fontWeight, radius, spacing, timeline } from "@/theme/tokens";
+import { control, fontSize, radius, spacing, timeline } from "@/theme/tokens";
 import { useThemeColors } from "@/theme/use-theme";
 import { Text } from "@/ui/text";
 
@@ -31,7 +32,6 @@ import {
   segmentBlockByDay,
   weekDays,
   weekHourMarks,
-  type DaySegment,
 } from "../domain/week";
 import { WeekBlockCard, WeekOverflowChip, type PositionedSegment } from "./week-block-card";
 
@@ -39,6 +39,35 @@ const WEEK = timeline.week;
 
 /** Granularidade ao tocar um vazio: ninguém planeja para as 14:07. */
 const SLOT_STEP_MINUTES = 15;
+
+/**
+ * Onde, DENTRO da coluna, o toque caiu — ou `null` quando não houve toque.
+ *
+ * Cada plataforma nomeia isso de um jeito, e a diferença é real, não cosmética:
+ * no nativo o evento vem do responder de toque e traz `locationY`; na web o
+ * `onPress` do react-native-web nasce de um `click` do DOM, cujo `nativeEvent`
+ * é um `MouseEvent` — ele tem `offsetY` e NÃO tem `locationY`. Ler só
+ * `locationY` dava `undefined` na web e um `NaN` silencioso na conta seguinte.
+ *
+ * E quando a coluna é ativada pelo TECLADO (foco + Enter) não existe posição
+ * nenhuma. Daí o `null` explícito em vez de um número inventado.
+ *
+ * A leitura é feita por chave e validada em tempo de execução porque os tipos
+ * do React Native descrevem o evento nativo, não o do DOM: o campo existe na
+ * web, mas não no tipo. Nada aqui silencia erro — o valor só é aceito se for
+ * mesmo um número finito.
+ *
+ * `Reflect.get` e não desestruturação: em um `MouseEvent` do DOM, `offsetY` é
+ * um getter do PROTÓTIPO, e qualquer cópia por espalhamento o perderia.
+ */
+function pressOffsetY(event: GestureResponderEvent): number | null {
+  for (const key of ["locationY", "offsetY"]) {
+    const value: unknown = Reflect.get(event.nativeEvent, key);
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+  }
+
+  return null;
+}
 
 /**
  * A grade semanal — uma composição só para telefone e desktop.
@@ -74,7 +103,7 @@ export function WeekGrid({
   readonly timeZone: string;
   readonly entries: readonly ScheduleBlockWithTask[];
   readonly onSelectBlock: (entry: ScheduleBlockWithTask) => void;
-  readonly onSelectSlot: (date: CalendarDate, startTime: TimeOfDay) => void;
+  readonly onSelectSlot: (date: CalendarDate, startTime: TimeOfDay | undefined) => void;
   readonly onOpenDay: (date: CalendarDate) => void;
   readonly isRefreshing?: boolean;
   readonly onRefresh?: (() => void) | undefined;
@@ -170,9 +199,20 @@ export function WeekGrid({
     setAvailableWidth(event.nativeEvent.layout.width);
   }
 
-  /** Converte a posição do toque em um horário utilizável. */
-  function slotAt(date: CalendarDate, locationY: number): void {
-    const rawMinute = window.startMinute + locationY / WEEK.pixelsPerMinute;
+  /**
+   * Converte a posição do toque em um horário utilizável.
+   *
+   * Sem posição — ativação por teclado — não se inventa um horário: passa
+   * `undefined` e o formulário usa o padrão dele (o próximo passo do relógio),
+   * que é o comportamento já validado na tela Hoje.
+   */
+  function slotAt(date: CalendarDate, offsetY: number | null): void {
+    if (offsetY === null) {
+      onSelectSlot(date, undefined);
+      return;
+    }
+
+    const rawMinute = window.startMinute + offsetY / WEEK.pixelsPerMinute;
     const snapped = Math.round(rawMinute / SLOT_STEP_MINUTES) * SLOT_STEP_MINUTES;
     const clamped = Math.min(Math.max(snapped, window.startMinute), 24 * 60 - SLOT_STEP_MINUTES);
 
@@ -274,7 +314,7 @@ export function WeekGrid({
                       const entry = blocksById.get(blockId);
                       if (entry !== undefined) onSelectBlock(entry);
                     }}
-                    onPressEmpty={(locationY) => slotAt(date, locationY)}
+                    onPressEmpty={(offsetY) => slotAt(date, offsetY)}
                     onOpenDay={() => onOpenDay(date)}
                   />
                 ))}
@@ -359,7 +399,7 @@ function DayColumn({
   readonly window: { readonly startMinute: number; readonly endMinute: number };
   readonly positioned: readonly PositionedSegment[];
   readonly onSelectBlock: (blockId: string) => void;
-  readonly onPressEmpty: (locationY: number) => void;
+  readonly onPressEmpty: (offsetY: number | null) => void;
   readonly onOpenDay: () => void;
 }) {
   const colors = useThemeColors();
@@ -383,7 +423,7 @@ function DayColumn({
         accessibilityRole="button"
         accessibilityLabel={`Agendar em ${formatCalendarDate(date, { weekday: "long", day: "numeric", month: "long" })}`}
         accessibilityHint="Escolhe o horário tocado e abre a seleção de tarefa"
-        onPress={(event) => onPressEmpty(event.nativeEvent.locationY)}
+        onPress={(event) => onPressEmpty(pressOffsetY(event))}
         style={StyleSheet.absoluteFill}
       />
 

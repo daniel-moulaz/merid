@@ -12,6 +12,7 @@ import {
   weekDays,
   weekHourMarks,
   weekRangeInTimeZone,
+  weeksBetween,
   WEEK_STARTS_ON,
 } from "./week";
 
@@ -409,5 +410,45 @@ describe("dayLoadMinutes", () => {
 
     expect(dayLoadMinutes(crossing, "2026-08-26")).toBe(60);
     expect(dayLoadMinutes(crossing, "2026-08-27")).toBe(60);
+  });
+});
+
+describe("weeksBetween", () => {
+  it("é zero para duas datas da mesma semana", () => {
+    // 2026-08-24 é segunda; 2026-08-30, o domingo que a fecha.
+    expect(weeksBetween("2026-08-24", "2026-08-30")).toBe(0);
+    expect(weeksBetween("2026-08-27", "2026-08-24")).toBe(0);
+  });
+
+  it("conta semanas civis, não dias divididos por sete", () => {
+    // Sábado e o domingo seguinte distam UM dia — e uma semana inteira,
+    // porque a semana vira entre eles. `dias / 7` daria 0 e mandaria a tela
+    // para a semana errada.
+    expect(weeksBetween("2026-08-29", "2026-08-30")).toBe(0);
+    expect(weeksBetween("2026-08-30", "2026-08-31")).toBe(1);
+  });
+
+  it("é negativo para trás", () => {
+    expect(weeksBetween("2026-08-24", "2026-08-17")).toBe(-1);
+    expect(weeksBetween("2026-08-24", "2026-08-03")).toBe(-3);
+  });
+
+  it("atravessa mês e ano sem erro de arredondamento", () => {
+    expect(weeksBetween("2026-12-28", "2027-01-04")).toBe(1);
+    expect(weeksBetween("2026-08-24", "2027-08-23")).toBe(52);
+  });
+
+  it("respeita o início de semana configurado", () => {
+    // Com semana começando no domingo, 30/08 (domingo) ABRE a semana em vez
+    // de fechá-la, e a distância até 31/08 passa a ser zero.
+    expect(weeksBetween("2026-08-30", "2026-08-31", 0)).toBe(0);
+    expect(weeksBetween("2026-08-29", "2026-08-30", 0)).toBe(1);
+  });
+
+  it("é o inverso de addWeeks", () => {
+    for (const offset of [-9, -1, 0, 1, 5, 30]) {
+      const target = addWeeks(startOfWeek("2026-08-26"), offset);
+      expect(weeksBetween("2026-08-26", target)).toBe(offset);
+    }
   });
 });

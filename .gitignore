@@ -58,3 +58,5 @@ yarn-error.*
 /_legacy_nextjs/next-env.d.ts
 /_legacy_nextjs/tsconfig.tsbuildinfo
 /_legacy_nextjs/.env
+
+_legacy_nextjs/

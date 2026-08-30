@@ -1,6 +1,7 @@
 import {
   addDaysToCalendarDate,
   calendarRangeInTimeZone,
+  daysBetweenCalendarDates,
   formatCalendarDate,
   timeOfDayInTimeZone,
   timeOfDayToMinutes,
@@ -84,6 +85,28 @@ export function weekDays(weekStart: CalendarDate): CalendarDate[] {
 
 export function addWeeks(weekStart: CalendarDate, weeks: number): CalendarDate {
   return addDaysToCalendarDate(weekStart, weeks * DAYS_IN_WEEK);
+}
+
+/**
+ * Quantas semanas separam duas datas — a distância entre as SEMANAS que as
+ * contêm, não `dias / 7`.
+ *
+ * A distinção importa: com a semana começando na segunda, sábado e domingo
+ * distam 1 dia e 1 semana. Normalizar os dois lados com `startOfWeek` antes de
+ * dividir é o que torna a conta exata — a diferença entre dois inícios de
+ * semana é sempre múltipla de 7, e `daysBetweenCalendarDates` conta em UTC,
+ * sem transição de horário de verão no caminho.
+ */
+export function weeksBetween(
+  from: CalendarDate,
+  to: CalendarDate,
+  weekStartsOn: Weekday = WEEK_STARTS_ON,
+): number {
+  const days = daysBetweenCalendarDates(
+    startOfWeek(from, weekStartsOn),
+    startOfWeek(to, weekStartsOn),
+  );
+  return days / DAYS_IN_WEEK;
 }
 
 /**

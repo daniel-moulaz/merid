@@ -7,10 +7,12 @@ import { useThemeColors } from "@/theme/use-theme";
 /**
  * Navegação principal.
  *
- * Três destinos, nenhum vazio: HOJE é a tela do produto, INBOX é onde as
- * tarefas nascem, CONTA guarda sessão e fuso. A estrutura já comporta a
- * evolução planejada (Hoje · Agenda · + · Inbox · Progresso) sem reorganizar
- * rotas depois — mas aba sem conteúdo hoje seria só ruído.
+ * Quatro destinos, nenhum vazio: HOJE é a tela do dia, AGENDA é a semana,
+ * INBOX é onde as tarefas nascem, CONTA guarda sessão e fuso.
+ *
+ * A ordem é temporal e não alfabética — dia, semana, o que ainda não tem hora,
+ * eu — porque é assim que a pessoa navega: do agora para o entorno. Hoje e
+ * Agenda ficam adjacentes por serem a MESMA agenda em dois zooms.
  *
  * O `Tabs` do Expo Router é usado sem biblioteca extra de navegação: o SDK 57
  * já traz o navegador embutido, então nada disso exige development build.
@@ -22,13 +24,14 @@ import { useThemeColors } from "@/theme/use-theme";
  * os demais, porque depende da fonte do sistema.
  *
  * A correção poderia ser `@expo/vector-icons`, mas ele não está no projeto e
- * traz arquivos de fonte na casa dos megabytes para resolver TRÊS ícones.
+ * traz arquivos de fonte na casa dos megabytes para resolver QUATRO ícones.
  * Desenhá-los com `View` custa zero byte, renderiza idêntico nas três
  * plataformas e é imune à fonte do sistema. Todos partem da mesma caixa de
  * 24×24 e da mesma espessura de traço (`control.strokeWidth`), que é o que
  * garante a consistência que faltava.
  *
- * Se a Etapa 3 trouxer muitos ícones, aí sim vale reavaliar uma biblioteca.
+ * A Etapa 3 acrescentou exatamente um ícone, então o custo/benefício não
+ * mudou. Se um dia forem muitos, aí sim vale reavaliar uma biblioteca.
  */
 export default function TabsLayout() {
   const colors = useThemeColors();
@@ -55,6 +58,13 @@ export default function TabsLayout() {
         options={{
           title: "Hoje",
           tabBarIcon: ({ color, focused }) => <CalendarGlyph color={color} filled={focused} />,
+        }}
+      />
+      <Tabs.Screen
+        name="agenda"
+        options={{
+          title: "Agenda",
+          tabBarIcon: ({ color, focused }) => <WeekGlyph color={color} filled={focused} />,
         }}
       />
       <Tabs.Screen
@@ -86,6 +96,28 @@ function CalendarGlyph({ color, filled }: GlyphProps) {
         {filled ? (
           <View style={[styles.calendarMark, { backgroundColor: color }]} />
         ) : null}
+      </View>
+    </Glyph>
+  );
+}
+
+/**
+ * Semana: a mesma moldura do calendário, dividida em colunas.
+ *
+ * Partilhar a moldura com o ícone de Hoje é intencional: as duas telas SÃO a
+ * mesma agenda, e o que muda entre elas é o zoom. Um dia marcado contra vários
+ * dias lado a lado diz isso sem legenda.
+ */
+function WeekGlyph({ color, filled }: GlyphProps) {
+  return (
+    <Glyph>
+      <View style={[styles.frame, { borderColor: color }]}>
+        <View style={[styles.calendarHeader, { backgroundColor: color }]} />
+        <View style={styles.columns}>
+          <View style={[styles.column, { backgroundColor: color, opacity: filled ? 1 : 0.55 }]} />
+          <View style={[styles.column, { backgroundColor: color, opacity: filled ? 1 : 0.55 }]} />
+          <View style={[styles.column, { backgroundColor: color, opacity: filled ? 1 : 0.55 }]} />
+        </View>
       </View>
     </Glyph>
   );
@@ -159,6 +191,13 @@ const styles = StyleSheet.create({
     marginTop: 3,
     alignSelf: "center",
   },
+  columns: {
+    flexDirection: "row",
+    justifyContent: "space-evenly",
+    paddingTop: 3,
+    paddingHorizontal: 2,
+  },
+  column: { width: STROKE, height: 8, borderRadius: 1 },
 
   stack: { width: 20, gap: 4 },
   line: { height: STROKE, width: "100%", borderRadius: 1 },

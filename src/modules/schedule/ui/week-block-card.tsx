@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, View } from "react-native";
 
-import { formatCalendarDate, formatMinutes, minutesToTimeOfDay } from "@/lib/time";
+import { formatCalendarDate, minutesToTimeOfDay } from "@/lib/time";
 import { fontSize, fontWeight, radius, spacing, timeline } from "@/theme/tokens";
 import { useThemeColors } from "@/theme/use-theme";
 import type { Task } from "@/modules/tasks/domain/task";
@@ -37,7 +37,7 @@ export function WeekBlockCard({
 }) {
   const colors = useThemeColors();
 
-  const { startMinute, endMinute, lane, laneCount, hasConflict, task, date } = positioned;
+  const { startMinute, endMinute, lane, laneCount, hasConflict, task } = positioned;
   const isDone = task.status === "DONE";
 
   const top = (startMinute - windowStartMinute) * WEEK.pixelsPerMinute;
