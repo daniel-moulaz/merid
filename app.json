@@ -41,6 +41,13 @@
       "typedRoutes": true,
       "reactCompiler": true
     },
-    "primaryColor": "#4f46e5"
+    "primaryColor": "#4f46e5",
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "3fc7ae43-1cc7-4db3-90ea-f5e9fb848232"
+      }
+    },
+    "owner": "moulazz7"
   }
 }
