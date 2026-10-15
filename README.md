@@ -12,6 +12,29 @@ Listas de tarefas mostram o que você tem para fazer. Elas não mostram se aquil
 **cabe no seu dia**. Aqui toda tarefa tem duração estimada, e **prazo**
 ("até sexta") nunca se confunde com **horário** ("quarta, 14h–16h").
 
+**Stack:** Expo / React Native, TypeScript, Supabase / PostgreSQL e TanStack Query.
+
+**Estágio:** candidato ao primeiro piloto, com validação documentada em Android físico. A base também contempla iOS e Web; isso não representa homologação equivalente das três plataformas. Não há uma demo pública hospedada indicada neste repositório.
+
+## Experimente o fluxo principal
+
+Depois de [iniciar o ambiente local](#começando):
+
+1. Na **Inbox**, crie uma tarefa como “Revisar apresentação”, estime 45 minutos e escolha um prazo.
+2. Na **Agenda**, reserve um intervalo para essa tarefa. O prazo permanece separado do horário escolhido.
+3. Adicione outro bloco sobreposto para observar o aviso de conflito. O usuário decide se mantém os dois.
+4. Remova um bloco da agenda: a tarefa continua existindo na Inbox.
+5. Conclua a tarefa e consulte **Progresso**, que agrupa as conclusões pelo dia civil no fuso do perfil.
+
+## Decisões para explorar no código
+
+| Decisão | Evidência |
+| --- | --- |
+| Separar tarefa de bloco de agenda | [Modelo SQL e FK composta](supabase/migrations/20260829160000_schedule_blocks.sql), [testes de integração](tests/rls/schedule-blocks.rls.test.ts) |
+| Garantir isolamento no banco, além dos formulários | [Testes de RLS](tests/rls), [arquitetura](docs/ARCHITECTURE.md) |
+| Distinguir data civil de instante e usar o fuso do perfil | [Núcleo de datas](src/lib/time), [testes de timezone](src/lib/time/time-zone.test.ts) |
+| Detectar conflitos sem impedir sobreposição intencional | [Política](src/modules/schedule/domain/conflict-policy.ts), [testes de intervalos](src/modules/schedule/domain/overlap.test.ts) |
+
 ## Começando
 
 Requisitos: Node 20+ e Docker.
